@@ -18,7 +18,7 @@ export const agents = [
         features: ['개요 자동 생성', '데이터 시각화 제안', '비즈니스 톤 앤 매너 적용']
     },
     {
-        id: 'translate',
+        id: 'translate_language',
         name: '번역',
         description: '다양한 언어로 번역을 수행하며, 단순 번역을 넘어 문화적 뉘앙스까지 고려한 자연스러운 표현을 제안합니다.',
         features: ['다국어 번역 지원', '전문 용어 번역 최적화', '번역투 교정']

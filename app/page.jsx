@@ -13,6 +13,7 @@ export default function Home() {
     const [selectedAgentId, setSelectedAgentId] = useState(null);
     const [modalAgentId, setModalAgentId] = useState(null);
     const [uploadedFiles, setUploadedFiles] = useState([]);
+    const [uploadedUrls, setUploadedUrls] = useState([]);
     const router = useRouter();
 
     // Effect to toggle body class for history sidebar styling
@@ -53,6 +54,14 @@ export default function Home() {
         setUploadedFiles(prev => prev.filter((_, index) => index !== indexToRemove));
     };
 
+    const handleAddUrl = (newUrl) => {
+        setUploadedUrls(prev => [...prev, newUrl]);
+    };
+
+    const handleDeleteUrl = (indexToRemove) => {
+        setUploadedUrls(prev => prev.filter((_, index) => index !== indexToRemove));
+    };
+
     const handleLogout = async () => {
         await fetch('/api/auth/logout', { method: 'POST' });
         router.push('/login');
@@ -87,6 +96,8 @@ export default function Home() {
                 {/* Main Content */}
                 <ChatInterface
                     selectedAgentName={selectedAgent ? selectedAgent.name : null}
+                    selectedAgentId={selectedAgentId}
+                    uploadedUrls={uploadedUrls}
                 />
 
                 {/* Right Sidebar */}
@@ -98,6 +109,9 @@ export default function Home() {
                     uploadedFiles={uploadedFiles}
                     onAddFiles={handleAddFiles}
                     onDeleteFile={handleDeleteFile}
+                    uploadedUrls={uploadedUrls}
+                    onAddUrl={handleAddUrl}
+                    onDeleteUrl={handleDeleteUrl}
                     onLogout={handleLogout}
                 />
             </div>

@@ -4,14 +4,20 @@ import AgentList from './AgentList';
 /**
  * SidebarTools Component
  * Right sidebar containing File Upload, URL Input, and Agent Selection.
- * 
- * Props:
- * - agents: Array - List of agents
- * - selectedAgentId: string - Currently selected agent ID
- * - onSelectAgent: function(id)
- * - onOpenModal: function(id)
  */
-const SidebarTools = ({ agents, selectedAgentId, onSelectAgent, onOpenModal, uploadedFiles, onAddFiles, onDeleteFile, onLogout }) => {
+const SidebarTools = ({
+    agents,
+    selectedAgentId,
+    onSelectAgent,
+    onOpenModal,
+    uploadedFiles,
+    onAddFiles,
+    onDeleteFile,
+    uploadedUrls,
+    onAddUrl,
+    onDeleteUrl,
+    onLogout
+}) => {
     const fileInputRef = useRef(null);
     const urlInputRef = useRef(null);
 
@@ -44,15 +50,14 @@ const SidebarTools = ({ agents, selectedAgentId, onSelectAgent, onOpenModal, upl
     const handleFileChange = (e) => {
         if (e.target.files.length > 0) {
             onAddFiles(Array.from(e.target.files));
-            // Reset input value to allow selecting the same file again if needed
             e.target.value = '';
         }
     };
 
-    const handleAddUrl = () => {
+    const handleAddUrlClick = () => {
         const url = urlInputRef.current.value.trim();
         if (url) {
-            alert(`URL이 추가되었습니다:\n${url}`);
+            onAddUrl(url);
             urlInputRef.current.value = '';
         } else {
             alert('URL을 입력해주세요.');
@@ -61,7 +66,7 @@ const SidebarTools = ({ agents, selectedAgentId, onSelectAgent, onOpenModal, upl
 
     const handleUrlKeyPress = (e) => {
         if (e.key === 'Enter') {
-            handleAddUrl();
+            handleAddUrlClick();
         }
     };
 
@@ -142,8 +147,48 @@ const SidebarTools = ({ agents, selectedAgentId, onSelectAgent, onOpenModal, upl
                             ref={urlInputRef}
                             onKeyPress={handleUrlKeyPress}
                         />
-                        <button onClick={handleAddUrl}>추가</button>
+                        <button onClick={handleAddUrlClick}>추가</button>
                     </div>
+
+                    {/* Uploaded URL List */}
+                    {uploadedUrls && uploadedUrls.length > 0 && (
+                        <div className="uploaded-files-list" style={{ marginTop: '16px' }}>
+                            {uploadedUrls.map((url, index) => (
+                                <div key={index} className="file-item" style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    padding: '8px 12px',
+                                    backgroundColor: '#fff',
+                                    border: '1px solid var(--border-color)',
+                                    borderRadius: '8px',
+                                    marginBottom: '8px',
+                                    fontSize: '14px'
+                                }}>
+                                    <span style={{
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        whiteSpace: 'nowrap',
+                                        maxWidth: '200px'
+                                    }}>{url}</span>
+                                    <button
+                                        onClick={() => onDeleteUrl(index)}
+                                        style={{
+                                            border: 'none',
+                                            background: 'none',
+                                            color: '#b0b8c1',
+                                            cursor: 'pointer',
+                                            padding: '4px',
+                                            marginLeft: '8px',
+                                            fontSize: '16px'
+                                        }}
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 {/* Agent Selection Section */}
@@ -158,7 +203,7 @@ const SidebarTools = ({ agents, selectedAgentId, onSelectAgent, onOpenModal, upl
                 </div>
             </div>
 
-            {/* Logout Section (Fixed at bottom) */}
+            {/* Logout Section */}
             <div style={{ paddingTop: '24px', borderTop: '1px solid var(--border-color)', marginTop: '24px' }}>
                 <button
                     onClick={onLogout}
@@ -168,7 +213,7 @@ const SidebarTools = ({ agents, selectedAgentId, onSelectAgent, onOpenModal, upl
                         backgroundColor: '#fff',
                         border: '1px solid var(--border-color)',
                         borderRadius: '12px',
-                        color: '#e93e2f', // Red for logout
+                        color: '#e93e2f',
                         fontWeight: '600',
                         cursor: 'pointer',
                         display: 'flex',
