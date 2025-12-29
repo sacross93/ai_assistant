@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Assistant Demo</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" rel="stylesheet">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Left Sidebar (Chat History) -->
+        <aside class="sidebar-left" id="sidebarLeft">
+            <div class="sidebar-header">
+                <h2>채팅 히스토리</h2>
+                <button class="close-btn" id="closeHistoryBtn">✕</button>
+            </div>
+            <div class="history-list">
+                <div class="history-group">
+                    <h3>오늘</h3>
+                    <div class="history-item">
+                        <span class="title">보고서 요약 요청</span>
+                        <span class="preview">2024년 3분기 실적 보고서를 요약해줘...</span>
+                    </div>
+                    <div class="history-item">
+                        <span class="title">영어 번역</span>
+                        <span class="preview">이 문장을 자연스러운 비즈니스 영어로...</span>
+                    </div>
+                </div>
+                <div class="history-group">
+                    <h3>어제</h3>
+                    <div class="history-item">
+                        <span class="title">코드 리뷰</span>
+                        <span class="preview">Python 코드 최적화 방안 검토...</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Toggle History Button -->
+        <button class="history-toggle-btn" id="historyToggleBtn">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 8V16M8 12H16" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            </svg>
+            <span>기록</span>
+        </button>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <div class="chat-container">
+                <div class="welcome-message">
+                    <h1>무엇을 도와드릴까요?</h1>
+                    <p>원하는 작업을 선택하거나 자연어로 질문해주세요.</p>
+                </div>
+
+                <div class="input-area">
+                    <div class="input-wrapper">
+                        <textarea placeholder="메시지를 입력하세요..." rows="1"></textarea>
+                        <button class="send-btn">전송</button>
+                    </div>
+                    <div class="selected-agent-indicator" id="selectedAgentIndicator" style="display: none;">
+                        선택된 Agent: <span id="currentAgentName">없음</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Right Panel (File Upload & Agent Selection) -->
+        <aside class="sidebar-right">
+            <!-- File Upload Section -->
+            <div class="upload-section">
+                <h3>파일 업로드</h3>
+                <div class="drop-zone" id="dropZone">
+                    <p>파일을 여기로 드래그하거나<br>클릭하여 선택하세요</p>
+                    <input type="file" id="fileInput" hidden>
+                </div>
+            </div>
+
+            <!-- URL Input Section -->
+            <div class="url-section">
+                <h3>URL 입력</h3>
+                <div class="url-input-container">
+                    <input type="url" id="urlInput" placeholder="유튜브 링크 등을 입력하세요">
+                    <button id="addUrlBtn">추가</button>
+                </div>
+            </div>
+
+            <!-- Agent Selection Section -->
+            <div class="agent-section">
+                <h3>LLM Agent 선택</h3>
+                <div class="agent-list" id="agentList">
+                    <!-- Agent items will be injected via JS -->
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Agent Detail Modal -->
+    <div class="modal-overlay" id="agentModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalAgentName">Agent Name</h2>
+                <button class="close-modal-btn" id="closeModalBtn">✕</button>
+            </div>
+            <div class="modal-body">
+                <p id="modalAgentDesc">Description goes here.</p>
+                <div class="modal-features">
+                    <h4>주요 기능</h4>
+                    <ul id="modalAgentFeatures"></ul>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-primary" id="useAgentBtn">이 Agent 사용하기</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
