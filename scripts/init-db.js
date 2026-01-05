@@ -8,10 +8,10 @@ const db = new Database(dbPath);
 const SALT_ROUNDS = 10;
 
 async function init() {
-    console.log('Initializing database...');
+  console.log('Initializing database...');
 
-    // Create table
-    db.exec(`
+  // Create table (Users)
+  db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE NOT NULL,
@@ -21,21 +21,45 @@ async function init() {
     )
   `);
 
-    // Check if admin exists
-    const admin = db.prepare('SELECT * FROM users WHERE username = ?').get('admin');
+  // Create table (Conversations)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS conversations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users (id)
+    )
+    `);
 
-    if (!admin) {
-        console.log('Creating admin user...');
-        const hashedPassword = await bcrypt.hash('1234', SALT_ROUNDS);
+  // Create table (Messages)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        conversation_id INTEGER NOT NULL,
+        role TEXT CHECK( role IN ('user', 'assistant', 'system') ) NOT NULL,
+        content TEXT NOT NULL,
+        agent_id TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (conversation_id) REFERENCES conversations (id)
+    )
+    `);
 
-        const insert = db.prepare('INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, ?)');
-        insert.run('admin', hashedPassword, 'Administrator', 'admin');
-        console.log('Admin user created: admin / 1234');
-    } else {
-        console.log('Admin user already exists.');
-    }
+  // Check if admin exists
+  const admin = db.prepare('SELECT * FROM users WHERE username = ?').get('admin');
 
-    console.log('Database initialization complete.');
+  if (!admin) {
+    console.log('Creating admin user...');
+    const hashedPassword = await bcrypt.hash('1234', SALT_ROUNDS);
+
+    const insert = db.prepare('INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, ?)');
+    insert.run('admin', hashedPassword, 'Administrator', 'admin');
+    console.log('Admin user created: admin / 1234');
+  } else {
+    console.log('Admin user already exists.');
+  }
+
+  console.log('Database initialization complete.');
 }
 
 init();

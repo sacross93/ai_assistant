@@ -1,5 +1,11 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import STTResultCard from './STTResultCard';
+
+const AGENT_LABELS = {
+    'translate_language': '번역 에이전트',
+    'stt-summary': '영상 분석 에이전트',
+};
 
 /**
  * ChatInterface Component
@@ -9,12 +15,54 @@ import STTResultCard from './STTResultCard';
  * - selectedAgentName: string
  * - selectedAgentId: string
  * - uploadedUrls: array
+ * - currentConversationId: number | null (Optional, from parent)
+ * - onConversationChange: function (Optional, to notify parent of new conversation)
  */
-const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls }) => {
+const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls, currentConversationId = null, onConversationChange }) => {
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [conversationId, setConversationId] = useState(currentConversationId);
+
     const messagesEndRef = useRef(null);
+
+    // Sync prop to state if it changes
+    useEffect(() => {
+        if (currentConversationId) {
+            setConversationId(currentConversationId);
+            // Load messages for this conversation (If parent logic doesn't handle it)
+            fetchMessages(currentConversationId);
+        } else {
+            setConversationId(null);
+            setMessages([]);
+        }
+    }, [currentConversationId]);
+
+    const fetchMessages = async (convId) => {
+        try {
+            const res = await fetch(`/api/chat/messages?conversationId=${convId}`);
+            if (res.ok) {
+                const data = await res.json();
+                // Parse potential JSON content for STT
+                const parsedMessages = data.messages.map(m => {
+                    let content = m.content;
+                    try {
+                        // If it looks like JSON structure for STT
+                        if (content.trim().startsWith('{') || content.trim().startsWith('[')) {
+                            const parsed = JSON.parse(content);
+                            if (parsed.info || parsed.summary || parsed.translated) {
+                                content = parsed;
+                            }
+                        }
+                    } catch (e) { /* ignore */ }
+                    return { ...m, content };
+                });
+                setMessages(parsedMessages);
+            }
+        } catch (error) {
+            console.error("Failed to load messages:", error);
+        }
+    };
 
     // STT Options
     const [sttConfig, setSttConfig] = useState({
@@ -46,30 +94,23 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls }) => 
             displayContent = `[URL 분석 요청] ${uploadedUrls.join(', ')}\n${currentInput}`;
         }
 
-        const userMessage = { role: 'user', content: displayContent };
+        // Optimistic Update
+        const tempMsgId = Date.now();
+        const userMessage = { role: 'user', content: displayContent, id: tempMsgId };
         setMessages(prev => [...prev, userMessage]);
         setInput('');
         setIsLoading(true);
 
         try {
             if (selectedAgentId === 'translate_language') {
-                // ... (이전 번역 로직 유지)
                 const previousContext = messages.map(msg => {
                     let contentToSend = msg.content;
                     if (typeof msg.content === 'object' && msg.content !== null) {
-                        // STT 결과 객체인 경우, 번역에 도움이 되는 텍스트 부분만 추출하거나 문자열로 변환
-                        if (msg.content.merged_md) {
-                            contentToSend = msg.content.merged_md;
-                        } else if (msg.content.summary_md) {
-                            contentToSend = msg.content.summary_md; // fallback
-                        } else {
-                            contentToSend = JSON.stringify(msg.content);
-                        }
+                        if (msg.content.merged_md) contentToSend = msg.content.merged_md;
+                        else if (msg.content.summary_md) contentToSend = msg.content.summary_md;
+                        else contentToSend = JSON.stringify(msg.content);
                     }
-                    return {
-                        role: msg.role,
-                        content: contentToSend
-                    };
+                    return { role: msg.role, content: contentToSend };
                 });
 
                 const response = await fetch('/api/translate', {
@@ -78,30 +119,39 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls }) => 
                     body: JSON.stringify({
                         current_input: currentInput,
                         previous_context: previousContext,
-                        agentId: selectedAgentId
+                        agentId: selectedAgentId,
+                        conversationId: conversationId // Send current conversation ID
                     })
                 });
 
                 if (!response.ok) throw new Error('API connection failed');
                 const data = await response.json();
 
+                // Update Conversation ID if newly created
+                if (data.conversationId && data.conversationId !== conversationId) {
+                    setConversationId(data.conversationId);
+                    if (onConversationChange) onConversationChange(data.conversationId);
+                }
+
                 let displayContent = '';
                 if (data.translated) displayContent = data.translated;
                 else if (data.error) displayContent = `오류 발생: ${data.error}`;
                 else displayContent = "번역된 텍스트를 찾을 수 없습니다.";
 
-                setMessages(prev => [...prev, { role: 'assistant', content: displayContent }]);
+                setMessages(prev => [...prev, {
+                    role: 'assistant',
+                    content: displayContent,
+                    agent_id: selectedAgentId,
+                    conversation_id: data.conversationId
+                }]);
 
             } else if (selectedAgentId === 'stt-summary') {
-                // STT 로직
                 if (!uploadedUrls || uploadedUrls.length === 0) {
                     setMessages(prev => [...prev, { role: 'system', content: '분석할 URL을 오른쪽 사이드바에서 추가해주세요.' }]);
                     setIsLoading(false);
                     return;
                 }
 
-                // 여러 URL 처리? 일단 첫 번째 URL만 예시로 처리하거나 백엔드에서 루프 돌림
-                // 여기서는 리스트 전체를 백엔드로 보냄
                 const response = await fetch('/api/stt', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -109,49 +159,55 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls }) => 
                         urls: uploadedUrls,
                         config: {
                             whisper_model: 'large-v3',
-                            whisper_lang: 'ko', // 기본 한국어, 필요시 입력 분석하여 변경 가능
+                            whisper_lang: 'ko',
                             diarize: sttConfig.diarize,
                             make_summary: sttConfig.make_summary,
                             out_formats: 'txt'
                         },
-                        agentId: selectedAgentId
+                        agentId: selectedAgentId,
+                        conversationId: conversationId
                     })
                 });
 
                 if (!response.ok) throw new Error('STT API failed');
-                const data = await response.json(); // 응답은 텍스트 형태일 수도 있고 JSON일 수도 있음.
+                const data = await response.json();
 
-                // 결과 처리 시작
+                // Update conversation ID
+                let currentConvId = conversationId;
+                if (data.conversationId && data.conversationId !== conversationId) {
+                    currentConvId = data.conversationId;
+                    setConversationId(currentConvId);
+                    if (onConversationChange) onConversationChange(currentConvId);
+                }
+
                 if (data.results && data.results.length > 0) {
                     for (const r of data.results) {
                         const output = r.output;
                         if (output && output.success && output.request_id) {
-                            // 작업 시작 메시지 추가
                             const loadingMsgId = Date.now() + Math.random();
                             setMessages(prev => [...prev, {
                                 id: loadingMsgId,
                                 role: 'assistant',
                                 content: `분석을 시작합니다.\n최대 30초 정도 소요될 수 있습니다.`,
                                 isPolling: true,
-                                url: r.url
+                                url: r.url,
+                                agent_id: selectedAgentId,
+                                conversation_id: currentConvId
                             }]);
 
-                            // 비동기 폴링 시작
-                            pollSttResult(output.request_id, r.url, loadingMsgId);
+                            pollSttResult(output.request_id, r.url, loadingMsgId, currentConvId);
 
                         } else if (r.error) {
-                            setMessages(prev => [...prev, { role: 'assistant', content: `[오류 발생]\nURL: ${r.url}\n내용: ${r.error}` }]);
-                        } else {
-                            setMessages(prev => [...prev, { role: 'assistant', content: `[알 수 없는 응답]\n${JSON.stringify(r)}` }]);
+                            setMessages(prev => [...prev, { role: 'assistant', content: `[오류 발생]\nURL: ${r.url}\n내용: ${r.error}`, agent_id: selectedAgentId }]);
                         }
                     }
                 } else {
-                    setMessages(prev => [...prev, { role: 'assistant', content: "처리된 결과가 없습니다." }]);
+                    setMessages(prev => [...prev, { role: 'assistant', content: "처리된 결과가 없습니다.", agent_id: selectedAgentId }]);
                 }
 
             } else {
                 await new Promise(resolve => setTimeout(resolve, 800));
-                setMessages(prev => [...prev, { role: 'assistant', content: `[${selectedAgentName}] 기능은 아직 연동되지 않았습니다.` }]);
+                setMessages(prev => [...prev, { role: 'assistant', content: `[${selectedAgentName}] 기능은 아직 연동되지 않았습니다.`, agent_id: selectedAgentId }]);
             }
 
         } catch (error) {
@@ -162,36 +218,41 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls }) => 
         }
     };
 
-    // 폴링 로직
-    const pollSttResult = async (requestId, url, messageId) => {
-        const checkInterval = 3000; // 3초마다 확인
-        const maxAttempts = 100; // 최대 5분 대기 (3s * 100)
+    const pollSttResult = async (requestId, url, messageId, convId) => {
+        const checkInterval = 3000;
+        const maxAttempts = 100;
         let attempts = 0;
 
         const intervalId = setInterval(async () => {
             attempts++;
             try {
+                // Polling API does NOT save to DB
                 const res = await fetch(`/api/stt/result?request_id=${requestId}`);
-                if (!res.ok) {
-                    console.log('Polling waiting...');
-                    return;
-                }
+                if (!res.ok) return;
 
                 const data = await res.json();
 
                 if (data.status === 'completed') {
                     clearInterval(intervalId);
-
                     const resultData = data.data;
-                    let formattedContent = '';
-
-                    console.log("Polling Result Data:", resultData);
+                    let formattedContent = {};
 
                     if (resultData.success) {
-                        // 결과가 성공적이면 객체 그대로 저장 -> 렌더링 시 STTResultCard가 감지
                         formattedContent = resultData.content;
+                        // Save to DB manually
+                        await fetch('/api/chat/messages', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                conversationId: convId,
+                                role: 'assistant',
+                                content: JSON.stringify(formattedContent),
+                                agentId: 'stt-summary'
+                            })
+                        });
                     } else {
-                        formattedContent = `[분석 실패] 작업은 완료되었으나 성공하지 못했습니다.\n${JSON.stringify(resultData, null, 2)}`;
+                        formattedContent = `[분석 실패]\n${JSON.stringify(resultData, null, 2)}`;
+                        // Save failure message too? Optional.
                     }
 
                     setMessages(prev => prev.map(msg => {
@@ -202,14 +263,14 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls }) => 
                     }));
 
                 } else if (data.status === 'processing') {
-                    // 아직 처리 중
+                    // processing...
                 }
 
                 if (attempts >= maxAttempts) {
                     clearInterval(intervalId);
                     setMessages(prev => prev.map(msg => {
                         if (msg.id === messageId) {
-                            return { ...msg, content: `[시간 초과] 분석 시간이 너무 오래 걸립니다.\n나중에 request_id: ${requestId} 로 다시 조회해보세요.`, isPolling: false };
+                            return { ...msg, content: `[시간 초과] 분석 시간이 너무 오래 걸립니다.\nrequest_id: ${requestId}`, isPolling: false };
                         }
                         return msg;
                     }));
@@ -240,28 +301,36 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls }) => 
                     <div className="messages-area">
                         {messages.map((msg, idx) => (
                             <div key={idx} className={`message ${msg.role}`}>
-                                <div className="message-bubble">
-                                    {msg.isPolling ? (
-                                        <div className="polling-indicator">
-                                            <div className="spinner"></div>
-                                            <div className="polling-text">
-                                                <p>{msg.content}</p>
-                                                <span className="sub-text">잠시만 기다려주세요...</span>
+                                <div className="message-content-wrapper">
+                                    <div className="message-bubble">
+                                        {msg.isPolling ? (
+                                            <div className="polling-indicator">
+                                                <div className="spinner"></div>
+                                                <div className="polling-text">
+                                                    <p>{typeof msg.content === 'string' ? msg.content : "처리 중..."}</p>
+                                                    <span className="sub-text">잠시만 기다려주세요...</span>
+                                                </div>
                                             </div>
-                                        </div>
-                                    ) : (
-                                        (msg.role === 'assistant' || msg.role === 'system') ? (
-                                            /* STT 데이터 감지: content가 객체이고 info 필드를 가지고 있는 경우 */
-                                            (typeof msg.content === 'object' && msg.content !== null && msg.content.info) ? (
-                                                <STTResultCard data={msg.content} />
-                                            ) : (
-                                                <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>
-                                                    {typeof msg.content === 'object' ? JSON.stringify(msg.content, null, 2) : msg.content}
-                                                </pre>
-                                            )
                                         ) : (
-                                            msg.content
-                                        )
+                                            (msg.role === 'assistant' || msg.role === 'system') ? (
+                                                (typeof msg.content === 'object' && msg.content !== null && msg.content.info) ? (
+                                                    <STTResultCard data={msg.content} />
+                                                ) : (
+                                                    <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: 0 }}>
+                                                        {typeof msg.content === 'object' ? JSON.stringify(msg.content, null, 2) : msg.content}
+                                                    </pre>
+                                                )
+                                            ) : (
+                                                msg.content
+                                            )
+                                        )}
+                                    </div>
+
+                                    {/* Agent Label UI */}
+                                    {msg.role === 'assistant' && msg.agent_id && AGENT_LABELS[msg.agent_id] && (
+                                        <div className="agent-label">
+                                            {AGENT_LABELS[msg.agent_id]}
+                                        </div>
                                     )}
                                 </div>
                             </div>
@@ -278,7 +347,6 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls }) => 
                 )}
 
                 <div className="input-area">
-                    {/* STT Options (Only visible when STT agent is selected) */}
                     {selectedAgentId === 'stt-summary' && (
                         <div className="stt-options">
                             <label className="checkbox-container">
@@ -315,9 +383,8 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls }) => 
                         </button>
                     </div>
 
-                    {/* Selected Agent Indicator */}
-                    <div className="selected-agent-indicator" id="selectedAgentIndicator" style={{ display: selectedAgentName ? 'inline-block' : 'none' }}>
-                        선택된 Agent: <span id="currentAgentName">{selectedAgentName || '없음'}</span>
+                    <div className="selected-agent-indicator" style={{ display: selectedAgentName ? 'inline-block' : 'none' }}>
+                        선택된 Agent: <span>{selectedAgentName || '없음'}</span>
                     </div>
                 </div>
             </div>
@@ -330,8 +397,57 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls }) => 
                     display: flex;
                     flex-direction: column;
                     gap: 16px;
-                    max-height: calc(100vh - 240px); /* Adjust for options */
+                    max-height: calc(100vh - 240px);
                 }
+                .message {
+                    display: flex;
+                    width: 100%;
+                    max-width: 850px;
+                    margin: 0 auto;
+                }
+                .message-content-wrapper {
+                    display: flex;
+                    flex-direction: column;
+                    max-width: 70%;
+                }
+                .message.user {
+                    justify-content: flex-end;
+                }
+                .message.user .message-content-wrapper {
+                    align-items: flex-end;
+                }
+                .message.assistant {
+                    justify-content: flex-start;
+                }
+                
+                .message-bubble {
+                    padding: 12px 16px;
+                    border-radius: 12px;
+                    font-size: 15px;
+                    line-height: 1.5;
+                }
+                .message.user .message-bubble {
+                    background-color: #007AFF;
+                    color: white;
+                    border-bottom-right-radius: 4px;
+                }
+                .message.assistant .message-bubble {
+                    background-color: #f2f2f7;
+                    color: #1c1c1e;
+                    border-bottom-left-radius: 4px;
+                    border: 1px solid #e5e5ea;
+                }
+                
+                .agent-label {
+                    font-size: 11px;
+                    color: #8e8e93;
+                    margin-top: 4px;
+                    margin-left: 2px;
+                    display: flex;
+                    align-items: center;
+                    gap: 4px;
+                }
+                
                 .stt-options {
                     display: flex;
                     gap: 16px;
@@ -350,61 +466,11 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls }) => 
                     cursor: pointer;
                 }
                 
-                /* Reuse previous styles */
-                /* .message style is moved below for layout fix */
-                .message.user {
-                    justify-content: flex-end;
-                }
-                .message.assistant, .message.system {
-                    justify-content: flex-start;
-                }
-                .message-bubble {
-                    max-width: 70%;
-                    padding: 12px 16px;
-                    border-radius: 12px;
-                    font-size: 15px;
-                    line-height: 1.5;
-                }
-                .message.user .message-bubble {
-                    background-color: #007AFF;
-                    color: white;
-                    border-bottom-right-radius: 4px;
-                }
-                .message.assistant .message-bubble {
-                    background-color: #f2f2f7;
-                    color: #1c1c1e;
-                    border-bottom-left-radius: 4px;
-                    border: 1px solid #e5e5ea;
-                }
-                 .message.system .message-bubble {
-                    background-color: #ffcc00;
-                    color: #1c1c1e;
-                }
-
-                /* Polling / Loading Styles */
+                 /* Polling / Loading Styles */
                 .polling-indicator {
                     display: flex;
                     align-items: center;
                     gap: 12px;
-                }
-                
-                /* Layout Fix: Scrollbar at edge, content centered */
-                .welcome-message {
-                    max-width: 850px;
-                    margin: 0 auto;
-                    width: 100%;
-                }
-                .input-area {
-                    max-width: 850px;
-                    margin: 0 auto;
-                    width: 100%;
-                }
-                .message {
-                    display: flex;
-                    width: 100%;
-                    max-width: 850px;
-                    margin-left: auto;
-                    margin-right: auto;
                 }
                 .spinner {
                     width: 20px;
@@ -417,53 +483,21 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls }) => 
                 @keyframes spin {
                     to { transform: rotate(360deg); }
                 }
-                .polling-text p {
-                    margin: 0;
-                    font-weight: 500;
-                }
-                .polling-text .sub-text {
-                    font-size: 12px;
-                    color: #666;
-                    margin-top: 2px;
-                    display: block;
-                }
+                .polling-text p { margin: 0; font-weight: 500; }
+                .polling-text .sub-text { font-size: 12px; color: #666; margin-top: 2px; display: block; }
 
-                /* Custom Scrollbar for Messages Area */
-                .messages-area::-webkit-scrollbar {
-                    width: 6px;
-                }
-                .messages-area::-webkit-scrollbar-track {
-                    background: transparent;
-                }
-                .messages-area::-webkit-scrollbar-thumb {
-                    background-color: rgba(0, 0, 0, 0.1);
-                    border-radius: 10px;
-                }
-                .messages-area::-webkit-scrollbar-thumb:hover {
-                    background-color: rgba(0, 0, 0, 0.2);
-                }
-
-                @media (prefers-color-scheme: dark) {
+                 @media (prefers-color-scheme: dark) {
                     .message.assistant .message-bubble {
                         background-color: #2c2c2e;
                         color: white;
                         border-color: #3a3a3c;
                     }
-                    .polling-text .sub-text {
-                        color: #a0a0a0;
-                    }
-                    .spinner {
-                         border: 3px solid rgba(255, 255, 255, 0.3);
-                         border-top-color: #fff;
-                    }
-                    /* Dark mode scrollbar */
-                    .messages-area::-webkit-scrollbar-thumb {
-                        background-color: rgba(255, 255, 255, 0.2);
-                    }
-                    .messages-area::-webkit-scrollbar-thumb:hover {
-                        background-color: rgba(255, 255, 255, 0.3);
-                    }
+                    .polling-text .sub-text { color: #a0a0a0; }
+                    .spinner { border: 3px solid rgba(255, 255, 255, 0.3); border-top-color: #fff; }
                 }
+
+                .input-area { max-width: 850px; margin: 0 auto; width: 100%; }
+                .welcome-message { max-width: 850px; margin: 0 auto; width: 100%; }
             `}</style>
         </main>
     );

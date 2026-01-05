@@ -14,6 +14,7 @@ export default function Home() {
     const [modalAgentId, setModalAgentId] = useState(null);
     const [uploadedFiles, setUploadedFiles] = useState([]);
     const [uploadedUrls, setUploadedUrls] = useState([]);
+    const [currentConversationId, setCurrentConversationId] = useState(null);
     const router = useRouter();
 
     // Effect to toggle body class for history sidebar styling
@@ -28,6 +29,20 @@ export default function Home() {
     // Handlers
     const toggleHistory = () => {
         setIsHistoryOpen(prev => !prev);
+    };
+
+    const handleSelectConversation = (convId) => {
+        setCurrentConversationId(convId);
+        // Ensure to clear inputs or reset states if needed
+    };
+
+    const handleConversationChange = (newConvId) => {
+        setCurrentConversationId(newConvId);
+    };
+
+    const handleNewChat = () => {
+        setCurrentConversationId(null);
+        // 모바일 등에서 자동으로 사이드바 닫히는 동작은 SidebarHistory 내부에서 처리됨
     };
 
     const handleSelectAgent = (agentId) => {
@@ -79,6 +94,8 @@ export default function Home() {
                 <SidebarHistory
                     isOpen={isHistoryOpen}
                     onClose={() => setIsHistoryOpen(false)}
+                    onSelectConversation={handleSelectConversation}
+                    onNewChat={handleNewChat}
                 />
 
                 {/* History Toggle Button */}
@@ -98,6 +115,8 @@ export default function Home() {
                     selectedAgentName={selectedAgent ? selectedAgent.name : null}
                     selectedAgentId={selectedAgentId}
                     uploadedUrls={uploadedUrls}
+                    currentConversationId={currentConversationId}
+                    onConversationChange={handleConversationChange}
                 />
 
                 {/* Right Sidebar */}
