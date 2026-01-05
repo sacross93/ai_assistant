@@ -22,7 +22,8 @@ export async function POST(request) {
                     // 외부 API는 단순 텍스트 번역기이므로 현재 입력값만 전달함.
                     // (만약 외부 API가 문맥을 지원한다면 여기서 previous_context를 활용하여 프롬프트를 구성할 수 있음)
                     text: current_input,
-                    target_lang: target_lang || 'ko'
+                    target_lang: target_lang || 'ko',
+                    previous_context: previous_context || []
                 }),
             });
 

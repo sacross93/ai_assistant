@@ -33,6 +33,7 @@ export async function GET(request) {
 
         // 결과 성공 (200 OK)
         const data = await apiResponse.json();
+        console.log("STT Result Data received:", JSON.stringify(data, null, 2));
         return NextResponse.json({ status: 'completed', data: data });
 
     } catch (error) {

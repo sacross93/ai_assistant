@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import STTResultCard from './STTResultCard';
 
 /**
  * ChatInterface Component
@@ -53,10 +54,23 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls }) => 
         try {
             if (selectedAgentId === 'translate_language') {
                 // ... (이전 번역 로직 유지)
-                const previousContext = messages.map(msg => ({
-                    role: msg.role,
-                    content: msg.content
-                }));
+                const previousContext = messages.map(msg => {
+                    let contentToSend = msg.content;
+                    if (typeof msg.content === 'object' && msg.content !== null) {
+                        // STT 결과 객체인 경우, 번역에 도움이 되는 텍스트 부분만 추출하거나 문자열로 변환
+                        if (msg.content.merged_md) {
+                            contentToSend = msg.content.merged_md;
+                        } else if (msg.content.summary_md) {
+                            contentToSend = msg.content.summary_md; // fallback
+                        } else {
+                            contentToSend = JSON.stringify(msg.content);
+                        }
+                    }
+                    return {
+                        role: msg.role,
+                        content: contentToSend
+                    };
+                });
 
                 const response = await fetch('/api/translate', {
                     method: 'POST',
@@ -171,10 +185,13 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls }) => 
                     const resultData = data.data;
                     let formattedContent = '';
 
+                    console.log("Polling Result Data:", resultData);
+
                     if (resultData.success) {
-                        formattedContent = `[분석 완료]\n${resultData.content}`;
+                        // 결과가 성공적이면 객체 그대로 저장 -> 렌더링 시 STTResultCard가 감지
+                        formattedContent = resultData.content;
                     } else {
-                        formattedContent = `[분석 실패] 작업은 완료되었으나 성공하지 못했습니다.`;
+                        formattedContent = `[분석 실패] 작업은 완료되었으나 성공하지 못했습니다.\n${JSON.stringify(resultData, null, 2)}`;
                     }
 
                     setMessages(prev => prev.map(msg => {
@@ -213,7 +230,7 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls }) => 
 
     return (
         <main className="main-content">
-            <div className="chat-container">
+            <div className="chat-container" style={{ maxWidth: '100%' }}>
                 {messages.length === 0 ? (
                     <div className="welcome-message">
                         <h1>무엇을 도와드릴까요?</h1>
@@ -234,7 +251,14 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls }) => 
                                         </div>
                                     ) : (
                                         (msg.role === 'assistant' || msg.role === 'system') ? (
-                                            <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>{msg.content}</pre>
+                                            /* STT 데이터 감지: content가 객체이고 info 필드를 가지고 있는 경우 */
+                                            (typeof msg.content === 'object' && msg.content !== null && msg.content.info) ? (
+                                                <STTResultCard data={msg.content} />
+                                            ) : (
+                                                <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>
+                                                    {typeof msg.content === 'object' ? JSON.stringify(msg.content, null, 2) : msg.content}
+                                                </pre>
+                                            )
                                         ) : (
                                             msg.content
                                         )
@@ -306,7 +330,7 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls }) => 
                     display: flex;
                     flex-direction: column;
                     gap: 16px;
-                    max-height: calc(100vh - 220px); /* Adjust for options */
+                    max-height: calc(100vh - 240px); /* Adjust for options */
                 }
                 .stt-options {
                     display: flex;
@@ -327,10 +351,7 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls }) => 
                 }
                 
                 /* Reuse previous styles */
-                .message {
-                    display: flex;
-                    width: 100%;
-                }
+                /* .message style is moved below for layout fix */
                 .message.user {
                     justify-content: flex-end;
                 }
@@ -366,6 +387,25 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls }) => 
                     align-items: center;
                     gap: 12px;
                 }
+                
+                /* Layout Fix: Scrollbar at edge, content centered */
+                .welcome-message {
+                    max-width: 850px;
+                    margin: 0 auto;
+                    width: 100%;
+                }
+                .input-area {
+                    max-width: 850px;
+                    margin: 0 auto;
+                    width: 100%;
+                }
+                .message {
+                    display: flex;
+                    width: 100%;
+                    max-width: 850px;
+                    margin-left: auto;
+                    margin-right: auto;
+                }
                 .spinner {
                     width: 20px;
                     height: 20px;
@@ -388,6 +428,21 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls }) => 
                     display: block;
                 }
 
+                /* Custom Scrollbar for Messages Area */
+                .messages-area::-webkit-scrollbar {
+                    width: 6px;
+                }
+                .messages-area::-webkit-scrollbar-track {
+                    background: transparent;
+                }
+                .messages-area::-webkit-scrollbar-thumb {
+                    background-color: rgba(0, 0, 0, 0.1);
+                    border-radius: 10px;
+                }
+                .messages-area::-webkit-scrollbar-thumb:hover {
+                    background-color: rgba(0, 0, 0, 0.2);
+                }
+
                 @media (prefers-color-scheme: dark) {
                     .message.assistant .message-bubble {
                         background-color: #2c2c2e;
@@ -400,6 +455,13 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls }) => 
                     .spinner {
                          border: 3px solid rgba(255, 255, 255, 0.3);
                          border-top-color: #fff;
+                    }
+                    /* Dark mode scrollbar */
+                    .messages-area::-webkit-scrollbar-thumb {
+                        background-color: rgba(255, 255, 255, 0.2);
+                    }
+                    .messages-area::-webkit-scrollbar-thumb:hover {
+                        background-color: rgba(255, 255, 255, 0.3);
                     }
                 }
             `}</style>
