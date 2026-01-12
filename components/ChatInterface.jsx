@@ -1,10 +1,13 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import STTResultCard from './STTResultCard';
 
 const AGENT_LABELS = {
     'translate_language': '번역 에이전트',
     'stt-summary': '영상 분석 에이전트',
+    'report-gen': '보고서 에이전트',
 };
 
 /**
@@ -208,6 +211,45 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls, curre
                     setMessages(prev => [...prev, { role: 'assistant', content: "처리된 결과가 없습니다.", agent_id: selectedAgentId }]);
                 }
 
+            } else if (selectedAgentId === 'report-gen') {
+                const previousContext = messages.map(msg => {
+                    let contentToSend = msg.content;
+                    if (typeof msg.content === 'object' && msg.content !== null) {
+                        if (msg.content.merged_md) contentToSend = msg.content.merged_md;
+                        else if (msg.content.summary_md) contentToSend = msg.content.summary_md;
+                        else contentToSend = JSON.stringify(msg.content);
+                    }
+                    return { role: msg.role, content: contentToSend };
+                });
+
+                const response = await fetch('/api/report', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        current_input: currentInput,
+                        previous_context: previousContext,
+                        agentId: selectedAgentId,
+                        conversationId: conversationId
+                    })
+                });
+
+                if (!response.ok) throw new Error('Report API failed');
+                const data = await response.json();
+
+                if (data.conversationId && data.conversationId !== conversationId) {
+                    setConversationId(data.conversationId);
+                    if (onConversationChange) onConversationChange(data.conversationId);
+                }
+
+                let displayContent = data.report || "보고서 생성 결과가 없습니다.";
+
+                setMessages(prev => [...prev, {
+                    role: 'assistant',
+                    content: displayContent,
+                    agent_id: selectedAgentId,
+                    conversation_id: data.conversationId
+                }]);
+
             } else {
                 await new Promise(resolve => setTimeout(resolve, 800));
                 setMessages(prev => [...prev, { role: 'assistant', content: `[${selectedAgentName}] 기능은 아직 연동되지 않았습니다.`, agent_id: selectedAgentId }]);
@@ -302,42 +344,55 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls, curre
                     </div>
                 ) : (
                     <div className="messages-area">
-                        {messages.map((msg, idx) => (
-                            <div key={idx} className={`message ${msg.role}`}>
-                                <div className="message-content-wrapper">
-                                    <div className="message-bubble">
-                                        {msg.isPolling ? (
-                                            <div className="polling-indicator">
-                                                <div className="spinner"></div>
-                                                <div className="polling-text">
-                                                    <p>{typeof msg.content === 'string' ? msg.content : "처리 중..."}</p>
-                                                    <span className="sub-text">잠시만 기다려주세요...</span>
+                        {messages.map((msg, idx) => {
+                            const isReport = msg.role === 'assistant' && (msg.agent_id === 'report-gen' || (typeof msg.content === 'string' && (msg.content.startsWith('#') || msg.content.includes('**'))));
+
+                            return (
+                                <div key={idx} className={`message ${msg.role}`}>
+                                    <div className={`message-content-wrapper ${isReport ? 'report-wrapper' : ''}`}>
+                                        <div className={`message-bubble ${isReport ? 'report-bubble' : ''}`}>
+                                            {msg.isPolling ? (
+                                                <div className="polling-indicator">
+                                                    <div className="spinner"></div>
+                                                    <div className="polling-text">
+                                                        <p>{typeof msg.content === 'string' ? msg.content : "처리 중..."}</p>
+                                                        <span className="sub-text">잠시만 기다려주세요...</span>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        ) : (
-                                            (msg.role === 'assistant' || msg.role === 'system') ? (
-                                                (typeof msg.content === 'object' && msg.content !== null && msg.content.info) ? (
-                                                    <STTResultCard data={msg.content} />
-                                                ) : (
-                                                    <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: 0 }}>
-                                                        {typeof msg.content === 'object' ? JSON.stringify(msg.content, null, 2) : msg.content}
-                                                    </pre>
-                                                )
                                             ) : (
-                                                msg.content
-                                            )
+                                                (msg.role === 'assistant' || msg.role === 'system') ? (
+                                                    (typeof msg.content === 'object' && msg.content !== null && msg.content.info) ? (
+                                                        <STTResultCard data={msg.content} />
+                                                    ) : (
+                                                        // Handle Markdown for report agent or other markdown content
+                                                        (isReport) ? (
+                                                            <div className="markdown-content">
+                                                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                                    {typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)}
+                                                                </ReactMarkdown>
+                                                            </div>
+                                                        ) : (
+                                                            <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: 0 }}>
+                                                                {typeof msg.content === 'object' ? JSON.stringify(msg.content, null, 2) : msg.content}
+                                                            </pre>
+                                                        )
+                                                    )
+                                                ) : (
+                                                    msg.content
+                                                )
+                                            )}
+                                        </div>
+
+                                        {/* Agent Label UI */}
+                                        {msg.role === 'assistant' && msg.agent_id && AGENT_LABELS[msg.agent_id] && (
+                                            <div className="agent-label">
+                                                {AGENT_LABELS[msg.agent_id]}
+                                            </div>
                                         )}
                                     </div>
-
-                                    {/* Agent Label UI */}
-                                    {msg.role === 'assistant' && msg.agent_id && AGENT_LABELS[msg.agent_id] && (
-                                        <div className="agent-label">
-                                            {AGENT_LABELS[msg.agent_id]}
-                                        </div>
-                                    )}
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                         {isLoading && (
                             <div className="message assistant">
                                 <div className="message-bubble typing-indicator">
@@ -422,6 +477,9 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls, curre
                 .message.assistant {
                     justify-content: flex-start;
                 }
+                .message.assistant .message-content-wrapper {
+                    align-items: flex-start;
+                }
                 
                 .message-bubble {
                     padding: 12px 16px;
@@ -440,7 +498,19 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls, curre
                     border-bottom-left-radius: 4px;
                     border: 1px solid #e5e5ea;
                 }
-                
+
+                /* Report / Markdown Specific Styles */
+                .message-content-wrapper.report-wrapper {
+                    max-width: 90%; /* Wider for reports */
+                }
+                .message.assistant .message-bubble.report-bubble {
+                    background-color: #ffffff;
+                    border: 1px solid #e1e1e6;
+                    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+                    padding: 30px; /* More padding like a document */
+                    border-radius: 16px;
+                }
+
                 .agent-label {
                     font-size: 11px;
                     color: #8e8e93;
@@ -495,14 +565,83 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls, curre
                         color: white;
                         border-color: #3a3a3c;
                     }
+                    .message.assistant .message-bubble.report-bubble {
+                        background-color: #1c1c1e;
+                        border-color: #333;
+                    }
                     .polling-text .sub-text { color: #a0a0a0; }
                     .spinner { border: 3px solid rgba(255, 255, 255, 0.3); border-top-color: #fff; }
                 }
 
                 .input-area { max-width: 850px; margin: 0 auto; width: 100%; }
                 .welcome-message { max-width: 850px; margin: 0 auto; width: 100%; }
+                
+                /* Markdown Styles */
+                .markdown-content {
+                    line-height: 1.7;
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                    color: #2c3e50;
+                }
+                @media (prefers-color-scheme: dark) {
+                    .markdown-content { color: #e1e1e6; }
+                     .markdown-content h1, .markdown-content h2, .markdown-content h3 { color: #fff; }
+                }
+                
+                .markdown-content h1 {
+                    font-size: 1.6em;
+                    padding-bottom: 0.3em;
+                    border-bottom: 1px solid #eaecef;
+                    margin-top: 24px;
+                    margin-bottom: 16px;
+                }
+                .markdown-content h1:first-child { margin-top: 0; }
+                
+                .markdown-content h2 {
+                    font-size: 1.4em;
+                    padding-bottom: 0.3em;
+                    margin-top: 24px;
+                    margin-bottom: 16px;
+                }
+                
+                .markdown-content h3 {
+                    font-size: 1.2em;
+                    margin-top: 20px;
+                    margin-bottom: 12px;
+                }
+
+                .markdown-content p {
+                    margin-bottom: 16px;
+                }
+                
+                .markdown-content ul, .markdown-content ol {
+                    padding-left: 24px;
+                    margin-bottom: 16px;
+                }
+                
+                .markdown-content li {
+                    margin-bottom: 6px;
+                }
+                .markdown-content li::marker {
+                    color: #007AFF; /* Bullet color */
+                }
+
+                .markdown-content strong {
+                    font-weight: 700;
+                    color: #1a1a1a;
+                }
+                @media (prefers-color-scheme: dark) {
+                    .markdown-content strong { color: #fff; }
+                }
+
+                .markdown-content blockquote {
+                    padding: 0 1em;
+                    color: #6a737d;
+                    border-left: 0.25em solid #dfe2e5;
+                    margin: 0 0 16px 0;
+                }
+
             `}</style>
-        </main>
+        </main >
     );
 };
 
