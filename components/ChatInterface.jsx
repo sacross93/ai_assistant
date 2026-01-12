@@ -57,7 +57,10 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls, curre
                     } catch (e) { /* ignore */ }
                     return { ...m, content };
                 });
-                setMessages(parsedMessages);
+                setMessages(prev => {
+                    const pollingMessages = prev.filter(m => m.isPolling);
+                    return [...parsedMessages, ...pollingMessages];
+                });
             }
         } catch (error) {
             console.error("Failed to load messages:", error);
