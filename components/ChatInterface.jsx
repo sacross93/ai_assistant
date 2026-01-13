@@ -19,16 +19,76 @@ const AGENT_LABELS = {
  * - selectedAgentName: string
  * - selectedAgentId: string
  * - uploadedUrls: array
+ * - uploadedFiles: array
+ * - onAddFiles: function
+ * - onDeleteFile: function
+ * - onAddUrl: function
+ * - onDeleteUrl: function
  * - currentConversationId: number | null (Optional, from parent)
  * - onConversationChange: function (Optional, to notify parent of new conversation)
  */
-const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls, currentConversationId = null, onConversationChange }) => {
+const ChatInterface = ({
+    selectedAgentName,
+    selectedAgentId,
+    uploadedUrls,
+    uploadedFiles,
+    onAddFiles,
+    onDeleteFile,
+    onAddUrl,
+    onDeleteUrl,
+    currentConversationId = null,
+    onConversationChange
+}) => {
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [conversationId, setConversationId] = useState(currentConversationId);
 
+    // New State for Attachment Menu
+    const [showAttachMenu, setShowAttachMenu] = useState(false);
+    const [showUrlInput, setShowUrlInput] = useState(false);
+    const [urlInputValue, setUrlInputValue] = useState('');
+    const [isDragging, setIsDragging] = useState(false);
+    const dragCounter = useRef(0);
+
     const messagesEndRef = useRef(null);
+    const fileInputRef = useRef(null);
+
+    // Drag and Drop Handlers
+    const handleDragEnter = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounter.current++;
+        if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+            setIsDragging(true);
+        }
+    };
+
+    const handleDragLeave = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounter.current--;
+        if (dragCounter.current === 0) {
+            setIsDragging(false);
+        }
+    };
+
+    const handleDragOver = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    };
+
+    const handleDrop = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+        dragCounter.current = 0;
+
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            onAddFiles(Array.from(e.dataTransfer.files));
+            e.dataTransfer.clearData();
+        }
+    };
 
     // Sync prop to state if it changes
     useEffect(() => {
@@ -86,7 +146,7 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls, curre
     }, [messages]);
 
     const handleSendMessage = async () => {
-        if (!input.trim() && uploadedUrls?.length === 0) return;
+        if (!input.trim() && uploadedUrls?.length === 0 && uploadedFiles?.length === 0) return;
 
         if (!selectedAgentId) {
             const errorMessage = { role: 'system', content: '먼저 사용할 기능을 오른쪽 사이드바에서 선택해주세요.' };
@@ -95,10 +155,17 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls, curre
         }
 
         const currentInput = input;
-        // 사용자 메시지 표시 (URL이 있으면 함께 표시)
+
         let displayContent = currentInput;
+        // 사용자 메시지 표시 (URL이 있으면 함께 표시)
         if (selectedAgentId === 'stt-summary' && uploadedUrls?.length > 0) {
             displayContent = `[URL 분석 요청] ${uploadedUrls.join(', ')}\n${currentInput}`;
+        }
+
+        // Add file info to display content if files are uploaded
+        if (uploadedFiles?.length > 0) {
+            const fileNames = uploadedFiles.map(f => f.name).join(', ');
+            displayContent = `[파일 첨부: ${fileNames}]\n${displayContent}`;
         }
 
         // Optimistic Update
@@ -154,7 +221,7 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls, curre
 
             } else if (selectedAgentId === 'stt-summary') {
                 if (!uploadedUrls || uploadedUrls.length === 0) {
-                    setMessages(prev => [...prev, { role: 'system', content: '분석할 URL을 오른쪽 사이드바에서 추가해주세요.' }]);
+                    setMessages(prev => [...prev, { role: 'system', content: '분석할 URL을 추가해주세요.' }]);
                     setIsLoading(false);
                     return;
                 }
@@ -376,7 +443,21 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls, curre
     };
 
     return (
-        <main className="main-content">
+        <main
+            className="main-content"
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+        >
+            {isDragging && (
+                <div className="drag-overlay">
+                    <div className="drag-message">
+                        <span className="icon">📂</span>
+                        <p>파일을 여기에 놓으세요</p>
+                    </div>
+                </div>
+            )}
             <div className="chat-container" style={{ maxWidth: '100%' }}>
                 {messages.length === 0 ? (
                     <div className="welcome-message">
@@ -469,23 +550,112 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls, curre
                         </div>
                     )}
 
+                    {/* URL Input Area (Inline) - Moved outside input-wrapper */}
+                    {showUrlInput && (
+                        <div className="url-input-inline">
+                            <span className="icon">🔗</span>
+                            <input
+                                type="url"
+                                placeholder="https://..."
+                                value={urlInputValue}
+                                onChange={(e) => setUrlInputValue(e.target.value)}
+                                autoFocus
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        if (urlInputValue.trim()) {
+                                            onAddUrl(urlInputValue.trim());
+                                            setUrlInputValue('');
+                                            setShowUrlInput(false);
+                                        }
+                                    }
+                                }}
+                            />
+                            <button className="add-btn" onClick={() => {
+                                if (urlInputValue.trim()) {
+                                    onAddUrl(urlInputValue.trim());
+                                    setUrlInputValue('');
+                                    setShowUrlInput(false);
+                                }
+                            }}>추가</button>
+                            <button className="close-btn" onClick={() => setShowUrlInput(false)}>✕</button>
+                        </div>
+                    )}
+
                     <div className="input-wrapper">
-                        <textarea
-                            placeholder={selectedAgentId === 'stt-summary' ? "URL을 추가하고 엔터를 누르세요..." : "메시지를 입력하세요..."}
-                            rows="1"
-                            value={input}
-                            onChange={(e) => setInput(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                        ></textarea>
-                        <button className="send-btn" onClick={handleSendMessage} disabled={isLoading || (!input.trim() && (!uploadedUrls || uploadedUrls.length === 0))}>
-                            전송
-                        </button>
+
+                        {/* Attachment Preview Area */}
+                        {(uploadedFiles?.length > 0 || uploadedUrls?.length > 0) && (
+                            <div className="attachment-preview">
+                                {uploadedFiles?.map((file, idx) => (
+                                    <div key={`file-${idx}`} className="attachment-chip">
+                                        <span className="icon">📄</span>
+                                        <span className="name">{file.name}</span>
+                                        <button onClick={() => onDeleteFile(idx)} className="delete-btn">×</button>
+                                    </div>
+                                ))}
+                                {uploadedUrls?.map((url, idx) => (
+                                    <div key={`url-${idx}`} className="attachment-chip">
+                                        <span className="icon">🔗</span>
+                                        <span className="name">{url}</span>
+                                        <button onClick={() => onDeleteUrl(idx)} className="delete-btn">×</button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        <div className="input-row">
+                            {/* Plus Button & Menu */}
+                            <div className="attach-button-wrapper">
+                                <button className="attach-btn" onClick={() => setShowAttachMenu(!showAttachMenu)}>
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                                    </svg>
+                                </button>
+
+                                {showAttachMenu && (
+                                    <div className="attach-menu">
+                                        <button onClick={() => { fileInputRef.current.click(); setShowAttachMenu(false); }}>
+                                            <span className="icon">📁</span> 파일 업로드
+                                        </button>
+                                        <button onClick={() => { setShowUrlInput(true); setShowAttachMenu(false); }}>
+                                            <span className="icon">🔗</span> URL 추가
+                                        </button>
+                                    </div>
+                                )}
+                                <input
+                                    type="file"
+                                    hidden
+                                    ref={fileInputRef}
+                                    multiple
+                                    onChange={(e) => {
+                                        if (e.target.files?.length > 0) {
+                                            onAddFiles(Array.from(e.target.files));
+                                            e.target.value = '';
+                                        }
+                                    }}
+                                />
+                            </div>
+
+                            <textarea
+                                placeholder={selectedAgentId === 'stt-summary' ? "URL을 추가하거나 메시지를 입력하세요..." : "메시지를 입력하세요..."}
+                                rows="1"
+                                value={input}
+                                onChange={(e) => setInput(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                            ></textarea>
+                            <button className="send-btn" onClick={handleSendMessage} disabled={isLoading || (!input.trim() && (!uploadedUrls || uploadedUrls.length === 0) && (!uploadedFiles || uploadedFiles.length === 0))}>
+                                전송
+                            </button>
+                        </div>
                     </div>
 
                     <div className="selected-agent-indicator" style={{ display: selectedAgentName ? 'inline-block' : 'none' }}>
                         선택된 Agent: <span>{selectedAgentName || '없음'}</span>
                     </div>
                 </div>
+
+
             </div>
 
             <style jsx>{`
@@ -618,6 +788,207 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls, curre
                 .input-area { max-width: 850px; margin: 0 auto; width: 100%; }
                 .welcome-message { max-width: 850px; margin: 0 auto; width: 100%; }
                 
+                /* New Styles for Attachment */
+                .input-wrapper {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 8px;
+                    border: 1px solid #e1e1e6;
+                    border-radius: 20px;
+                    padding: 8px 12px;
+                    background: white;
+                }
+                
+                .input-row {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    width: 100%;
+                }
+
+                .input-wrapper textarea {
+                    border: none;
+                    background: transparent;
+                    resize: none;
+                    max-height: 120px;
+                    padding: 8px 0;
+                    flex: 1;
+                    outline: none;
+                    font-size: 15px;
+                    line-height: 1.5;
+                }
+
+                .attach-button-wrapper {
+                    position: relative;
+                }
+
+                .attach-btn {
+                    width: 32px;
+                    height: 32px;
+                    border-radius: 50%;
+                    background: #f2f2f7;
+                    border: none;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    cursor: pointer;
+                    color: #666;
+                    transition: all 0.2s;
+                }
+                .attach-btn:hover {
+                    background: #e5e5ea;
+                    color: #007AFF;
+                }
+
+                .attach-menu {
+                    position: absolute;
+                    bottom: 40px;
+                    left: 0;
+                    background: white;
+                    border-radius: 12px;
+                    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+                    padding: 8px;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
+                    min-width: 140px;
+                    z-index: 100;
+                    border: 1px solid #eee;
+                }
+                .attach-menu button {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 8px 12px;
+                    border: none;
+                    background: none;
+                    text-align: left;
+                    font-size: 14px;
+                    cursor: pointer;
+                    border-radius: 8px;
+                    color: #333;
+                    white-space: nowrap;
+                }
+                .attach-menu button:hover {
+                    background: #f5f5f7;
+                }
+                .attach-menu .icon { font-size: 16px; }
+
+                .attachment-preview {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 8px;
+                    padding-bottom: 4px;
+                }
+                .attachment-chip {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    background: #f2f2f7;
+                    padding: 4px 10px;
+                    border-radius: 16px;
+                    font-size: 13px;
+                    color: #333;
+                    border: 1px solid #e5e5ea;
+                }
+                .attachment-chip .name {
+                    max-width: 150px;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                }
+                .attachment-chip .delete-btn {
+                    border: none;
+                    background: #ccc;
+                    width: 16px;
+                    height: 16px;
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 12px;
+                    color: white;
+                    cursor: pointer;
+                    padding: 0;
+                }
+                .attachment-chip .delete-btn:hover { background: #999; }
+
+                .url-input-inline {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    background: white;
+                    border: 1px solid #e1e1e6;
+                    border-radius: 16px;
+                    padding: 12px 16px;
+                    margin-bottom: 12px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+                    animation: slideUp 0.2s ease-out;
+                }
+                @keyframes slideUp {
+                    from { opacity: 0; transform: translateY(10px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+                .url-input-inline .icon { font-size: 16px; }
+                .url-input-inline input {
+                    flex: 1;
+                    border: none;
+                    background: transparent;
+                    font-size: 14px;
+                    outline: none;
+                }
+                .url-input-inline .add-btn {
+                    font-size: 13px;
+                    color: #007AFF;
+                    font-weight: 500;
+                    background: none;
+                    border: none;
+                    cursor: pointer;
+                    padding: 4px 8px;
+                }
+                 .url-input-inline .add-btn:hover { background: #e5f1ff; border-radius: 6px; }
+
+                .url-input-inline .close-btn {
+                    font-size: 14px;
+                    color: #999;
+                    background: none;
+                    border: none;
+                    cursor: pointer;
+                    padding: 4px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+                .url-input-inline .close-btn:hover { color: #666; }
+
+                .send-btn { margin-left: auto; height: 36px; padding: 0 20px; border-radius: 18px;}
+
+                /* Drag Overlay */
+                .drag-overlay {
+                    position: absolute;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    background: rgba(0, 122, 255, 0.1);
+                    border: 2px dashed #007AFF;
+                    border-radius: 16px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 1000;
+                    pointer-events: none; /* Let events pass through locally if needed, but here acts as visual block */
+                }
+                .drag-message {
+                    background: white;
+                    padding: 20px 40px;
+                    border-radius: 16px;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 12px;
+                    box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+                }
+                .drag-message .icon { font-size: 32px; }
+                .drag-message p { margin: 0; font-weight: 600; color: #007AFF; font-size: 18px; }
+
                 /* Markdown Styles */
                 .markdown-content {
                     line-height: 1.7;

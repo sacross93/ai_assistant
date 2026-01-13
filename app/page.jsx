@@ -115,6 +115,11 @@ export default function Home() {
                     selectedAgentName={selectedAgent ? selectedAgent.name : null}
                     selectedAgentId={selectedAgentId}
                     uploadedUrls={uploadedUrls}
+                    uploadedFiles={uploadedFiles}
+                    onAddFiles={handleAddFiles}
+                    onDeleteFile={handleDeleteFile}
+                    onAddUrl={handleAddUrl}
+                    onDeleteUrl={handleDeleteUrl}
                     currentConversationId={currentConversationId}
                     onConversationChange={handleConversationChange}
                 />
@@ -125,12 +130,6 @@ export default function Home() {
                     selectedAgentId={selectedAgentId}
                     onSelectAgent={handleSelectAgent}
                     onOpenModal={handleOpenModal}
-                    uploadedFiles={uploadedFiles}
-                    onAddFiles={handleAddFiles}
-                    onDeleteFile={handleDeleteFile}
-                    uploadedUrls={uploadedUrls}
-                    onAddUrl={handleAddUrl}
-                    onDeleteUrl={handleDeleteUrl}
                     onLogout={handleLogout}
                 />
             </div>
