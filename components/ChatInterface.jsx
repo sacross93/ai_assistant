@@ -532,6 +532,7 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls, curre
                     background-color: #007AFF;
                     color: white;
                     border-bottom-right-radius: 4px;
+                    white-space: pre-wrap;
                 }
                 .message.assistant .message-bubble {
                     background-color: #f2f2f7;
