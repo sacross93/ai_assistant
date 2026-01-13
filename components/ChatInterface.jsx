@@ -8,6 +8,7 @@ const AGENT_LABELS = {
     'translate_language': '번역 에이전트',
     'stt-summary': '영상 분석 에이전트',
     'report-gen': '보고서 에이전트',
+    'spellcheck': '맞춤법 에이전트',
 };
 
 /**
@@ -242,6 +243,46 @@ const ChatInterface = ({ selectedAgentName, selectedAgentId, uploadedUrls, curre
                 }
 
                 let displayContent = data.report || "보고서 생성 결과가 없습니다.";
+
+                setMessages(prev => [...prev, {
+                    role: 'assistant',
+                    content: displayContent,
+                    agent_id: selectedAgentId,
+                    conversation_id: data.conversationId
+                }]);
+
+
+            } else if (selectedAgentId === 'spellcheck') {
+                const previousContext = messages.map(msg => {
+                    let contentToSend = msg.content;
+                    if (typeof msg.content === 'object' && msg.content !== null) {
+                        if (msg.content.merged_md) contentToSend = msg.content.merged_md;
+                        else if (msg.content.summary_md) contentToSend = msg.content.summary_md;
+                        else contentToSend = JSON.stringify(msg.content);
+                    }
+                    return { role: msg.role, content: contentToSend };
+                });
+
+                const response = await fetch('/api/spellcheck', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        current_input: currentInput,
+                        previous_context: previousContext,
+                        agentId: selectedAgentId,
+                        conversationId: conversationId
+                    })
+                });
+
+                if (!response.ok) throw new Error('Spell Check API failed');
+                const data = await response.json();
+
+                if (data.conversationId && data.conversationId !== conversationId) {
+                    setConversationId(data.conversationId);
+                    if (onConversationChange) onConversationChange(data.conversationId);
+                }
+
+                let displayContent = data.result || "검사 결과가 없습니다.";
 
                 setMessages(prev => [...prev, {
                     role: 'assistant',
