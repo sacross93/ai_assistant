@@ -36,6 +36,7 @@ const ChatInterface = ({
     onDeleteFile,
     onAddUrl,
     onDeleteUrl,
+    onClearAttachments,
     currentConversationId = null,
     onConversationChange
 }) => {
@@ -173,6 +174,8 @@ const ChatInterface = ({
         const userMessage = { role: 'user', content: displayContent, id: tempMsgId };
         setMessages(prev => [...prev, userMessage]);
         setInput('');
+        if (onClearAttachments) onClearAttachments(); // Clear files and URLs via parent
+        setShowUrlInput(false); // Hide inline input if open
         setIsLoading(true);
 
         try {
@@ -220,28 +223,49 @@ const ChatInterface = ({
                 }]);
 
             } else if (selectedAgentId === 'stt-summary') {
-                if (!uploadedUrls || uploadedUrls.length === 0) {
-                    setMessages(prev => [...prev, { role: 'system', content: '분석할 URL을 추가해주세요.' }]);
+                if ((!uploadedUrls || uploadedUrls.length === 0) && (!uploadedFiles || uploadedFiles.length === 0)) {
+                    setMessages(prev => [...prev, { role: 'system', content: '분석할 URL을 추가하거나 파일을 업로드해주세요.' }]);
                     setIsLoading(false);
                     return;
                 }
 
-                const response = await fetch('/api/stt', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        urls: uploadedUrls,
-                        config: {
-                            whisper_model: 'large-v3',
-                            whisper_lang: 'ko',
-                            diarize: sttConfig.diarize,
-                            make_summary: sttConfig.make_summary,
-                            out_formats: 'txt'
-                        },
-                        agentId: selectedAgentId,
-                        conversationId: conversationId
-                    })
-                });
+                let response;
+                const baseConfig = {
+                    whisper_model: 'large-v3',
+                    whisper_lang: 'ko',
+                    diarize: sttConfig.diarize,
+                    make_summary: sttConfig.make_summary,
+                    out_formats: 'txt'
+                };
+
+                // Case 1: File Upload (Priority)
+                if (uploadedFiles.length > 0) {
+                    const formData = new FormData();
+                    uploadedFiles.forEach(file => {
+                        formData.append('files', file);
+                    });
+                    formData.append('config', JSON.stringify(baseConfig));
+                    formData.append('agentId', selectedAgentId);
+                    if (conversationId) formData.append('conversationId', conversationId);
+
+                    response = await fetch('/api/stt', {
+                        method: 'POST',
+                        body: formData, // No Content-Type header needed for FormData
+                    });
+                }
+                // Case 2: URL Only
+                else {
+                    response = await fetch('/api/stt', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            urls: uploadedUrls,
+                            config: baseConfig,
+                            agentId: selectedAgentId,
+                            conversationId: conversationId
+                        })
+                    });
+                }
 
                 if (!response.ok) throw new Error('STT API failed');
                 const data = await response.json();
@@ -365,7 +389,7 @@ const ChatInterface = ({
 
         } catch (error) {
             console.error('Chat Error:', error);
-            setMessages(prev => [...prev, { role: 'assistant', content: '서비스 연결에 실패했습니다. 잠시 후 다시 시도해주세요.' }]);
+            setMessages(prev => [...prev, { role: 'assistant', content: `서비스 연결에 실패했습니다. (${error.message})` }]);
         } finally {
             setIsLoading(false);
         }

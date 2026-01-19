@@ -77,6 +77,11 @@ export default function Home() {
         setUploadedUrls(prev => prev.filter((_, index) => index !== indexToRemove));
     };
 
+    const handleClearAttachments = () => {
+        setUploadedFiles([]);
+        setUploadedUrls([]);
+    };
+
     const handleLogout = async () => {
         await fetch('/api/auth/logout', { method: 'POST' });
         router.push('/login');
@@ -120,6 +125,7 @@ export default function Home() {
                     onDeleteFile={handleDeleteFile}
                     onAddUrl={handleAddUrl}
                     onDeleteUrl={handleDeleteUrl}
+                    onClearAttachments={handleClearAttachments}
                     currentConversationId={currentConversationId}
                     onConversationChange={handleConversationChange}
                 />
