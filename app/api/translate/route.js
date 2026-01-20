@@ -31,18 +31,23 @@ export async function POST(request) {
         console.log(`- Conversation ID: ${currentConversationId}`);
 
         if (agentId === 'translate_language') {
+            const requestBody = {
+                // curl 성공 예시와 동일하게 구성하되, text 필드도 안전하게 추가
+                text: current_input,
+                current_input: current_input,
+                target_lang: target_lang || 'ko',
+                // 자바스크립트에서 빈 배열 []은 truthy이므로 명시적으로 체크하여 빈 문자열로 변환해야 함
+                previous_context: (Array.isArray(previous_context) && previous_context.length === 0) ? "" : (previous_context || "")
+            };
+
+            console.log("Sending to External API:", JSON.stringify(requestBody, null, 2));
+
             const response = await fetch('http://192.168.120.101:18014/playground/translate_language/text', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                    // 외부 API는 단순 텍스트 번역기이므로 현재 입력값만 전달함.
-                    // (만약 외부 API가 문맥을 지원한다면 여기서 previous_context를 활용하여 프롬프트를 구성할 수 있음)
-                    text: current_input,
-                    target_lang: target_lang || 'ko',
-                    previous_context: previous_context || []
-                }),
+                body: JSON.stringify(requestBody),
             });
 
             if (!response.ok) {
