@@ -47,4 +47,7 @@ next-env.d.ts
 *.sw?
 
 # Database
-database.sqlite
+database.sqlite*
+
+# Temp Data
+temp_data/

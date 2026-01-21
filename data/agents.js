@@ -7,7 +7,7 @@ export const agents = [
     },
     {
         id: 'doc-chat',
-        name: '문서 기반 챗봇',
+        name: '사내 문서 기반 챗봇',
         description: '업로드한 문서를 분석하여 질문에 대한 정확한 답변을 제공합니다. 긴 문서를 모두 읽지 않아도 핵심 내용을 파악할 수 있습니다.',
         features: ['PDF, Word 문서 인식', '문서 내용 기반 질의응답', '출처 페이지 표기']
     },
@@ -25,7 +25,7 @@ export const agents = [
     },
     {
         id: 'stt-summary',
-        name: 'STT 요약',
+        name: 'STT 통합 요약',
         description: '음성 파일을 텍스트로 변환하고, 긴 대화 내용을 요약하여 핵심 안건과 결정 사항을 정리해줍니다.',
         features: ['음성 -> 텍스트 변환', '회의록 자동 생성', '주요 키워드 추출']
     }

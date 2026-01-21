@@ -15,8 +15,64 @@ function HomeContent() {
     const [uploadedFiles, setUploadedFiles] = useState([]);
     const [uploadedUrls, setUploadedUrls] = useState([]);
     const [currentConversationId, setCurrentConversationId] = useState(null);
+
+    // RAG Document States
+    const [ragDocuments, setRagDocuments] = useState([]);
+    const [selectedDocIds, setSelectedDocIds] = useState([]);
+    const [useAllDocs, setUseAllDocs] = useState(true);
+
     const router = useRouter();
     const searchParams = useSearchParams();
+
+    // Fetch RAG documents when doc-chat agent is selected
+    useEffect(() => {
+        if (selectedAgentId === 'doc-chat') {
+            fetchRagDocuments();
+        }
+    }, [selectedAgentId]);
+
+    const fetchRagDocuments = async () => {
+        try {
+            const res = await fetch('/api/doc-chat/docs');
+            if (res.ok) {
+                const data = await res.json();
+                setRagDocuments(data.documents || []);
+            }
+        } catch (error) {
+            console.error('Failed to fetch RAG documents:', error);
+        }
+    };
+
+    const handleToggleDocSelection = (docId) => {
+        setSelectedDocIds(prev => {
+            if (prev.includes(docId)) {
+                return prev.filter(id => id !== docId);
+            } else {
+                return [...prev, docId];
+            }
+        });
+        // 문서를 선택하면 전체 문서 모드 해제
+        setUseAllDocs(false);
+    };
+
+    const handleToggleAllDocs = () => {
+        setUseAllDocs(prev => !prev);
+        if (!useAllDocs) {
+            setSelectedDocIds([]); // 전체 문서 모드 시 개별 선택 해제
+        }
+    };
+
+    const handleDeleteRagDocument = async (docId) => {
+        try {
+            const res = await fetch(`/api/doc-chat/docs?doc_id=${docId}`, { method: 'DELETE' });
+            if (res.ok) {
+                setRagDocuments(prev => prev.filter(d => d.doc_id !== docId));
+                setSelectedDocIds(prev => prev.filter(id => id !== docId));
+            }
+        } catch (error) {
+            console.error('Failed to delete document:', error);
+        }
+    };
 
     // Effect to toggle body class for history sidebar styling
     useEffect(() => {
@@ -140,6 +196,9 @@ function HomeContent() {
                     onClearAttachments={handleClearAttachments}
                     currentConversationId={currentConversationId}
                     onConversationChange={handleConversationChange}
+                    selectedDocIds={selectedDocIds}
+                    useAllDocs={useAllDocs}
+                    onDocumentUploaded={fetchRagDocuments}
                 />
 
                 {/* Right Sidebar */}
@@ -149,6 +208,12 @@ function HomeContent() {
                     onSelectAgent={handleSelectAgent}
                     onOpenModal={handleOpenModal}
                     onLogout={handleLogout}
+                    ragDocuments={ragDocuments}
+                    selectedDocIds={selectedDocIds}
+                    useAllDocs={useAllDocs}
+                    onToggleDocSelection={handleToggleDocSelection}
+                    onToggleAllDocs={handleToggleAllDocs}
+                    onDeleteDocument={handleDeleteRagDocument}
                 />
             </div>
 

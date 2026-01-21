@@ -9,6 +9,7 @@ const AGENT_LABELS = {
     'stt-summary': '영상 분석 에이전트',
     'report-gen': '보고서 에이전트',
     'spellcheck': '맞춤법 에이전트',
+    'doc-chat': '문서 기반 챗봇',
 };
 
 /**
@@ -38,7 +39,11 @@ const ChatInterface = ({
     onDeleteUrl,
     onClearAttachments,
     currentConversationId = null,
-    onConversationChange
+    onConversationChange,
+    // RAG Document Props
+    selectedDocIds = [],
+    useAllDocs = true,
+    onDocumentUploaded
 }) => {
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
@@ -382,6 +387,105 @@ const ChatInterface = ({
                     conversation_id: data.conversationId
                 }]);
 
+            } else if (selectedAgentId === 'doc-chat') {
+                // doc-chat: 파일 업로드 또는 질문 처리
+
+                // Case 1: 파일 업로드가 있는 경우 먼저 업로드
+                if (uploadedFiles && uploadedFiles.length > 0) {
+                    for (const file of uploadedFiles) {
+                        const formData = new FormData();
+                        formData.append('file', file);
+
+                        try {
+                            const uploadRes = await fetch('/api/doc-chat/upload', {
+                                method: 'POST',
+                                body: formData
+                            });
+
+                            if (uploadRes.ok) {
+                                const uploadData = await uploadRes.json();
+                                setMessages(prev => [...prev, {
+                                    role: 'assistant',
+                                    content: `✅ **문서 업로드 완료**\n\n📄 **${uploadData.filename}**\n- 페이지: ${uploadData.pages || 0}페이지\n- 청크: ${uploadData.chunks || 0}개로 분할\n\n이제 이 문서에 대해 질문해보세요!`,
+                                    agent_id: selectedAgentId
+                                }]);
+                                // 문서 목록 새로고침
+                                if (onDocumentUploaded) onDocumentUploaded();
+                            } else {
+                                const errData = await uploadRes.json();
+                                setMessages(prev => [...prev, {
+                                    role: 'assistant',
+                                    content: `❌ 업로드 실패: ${errData.error || '알 수 없는 오류'}`,
+                                    agent_id: selectedAgentId
+                                }]);
+                            }
+                        } catch (uploadErr) {
+                            setMessages(prev => [...prev, {
+                                role: 'assistant',
+                                content: `❌ 업로드 중 오류 발생: ${uploadErr.message}`,
+                                agent_id: selectedAgentId
+                            }]);
+                        }
+                    }
+                }
+
+                // Case 2: 질문이 있는 경우 RAG API 호출
+                if (currentInput.trim()) {
+                    const askPayload = {
+                        question: currentInput,
+                        conversationId: conversationId,
+                        top_k: 6
+                    };
+
+                    // 문서 선택 모드에 따라 파라미터 설정
+                    if (useAllDocs) {
+                        askPayload.all_docs = true;
+                        askPayload.max_docs = 20;
+                    } else if (selectedDocIds && selectedDocIds.length > 0) {
+                        askPayload.doc_ids = selectedDocIds;
+                    } else {
+                        // 선택된 문서가 없으면 전체 검색
+                        askPayload.all_docs = true;
+                        askPayload.max_docs = 20;
+                    }
+
+                    const response = await fetch('/api/doc-chat/ask', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(askPayload)
+                    });
+
+                    if (!response.ok) throw new Error('RAG API failed');
+                    const data = await response.json();
+
+                    // Update Conversation ID
+                    if (data.conversationId && data.conversationId !== conversationId) {
+                        setConversationId(data.conversationId);
+                        if (onConversationChange) onConversationChange(data.conversationId);
+                    }
+
+                    // 응답 포맷팅 (출처 포함)
+                    let formattedResponse = data.answer || '답변을 생성하지 못했습니다.';
+
+                    // 출처 정보 추가
+                    if (data.sources && data.sources.length > 0) {
+                        formattedResponse += '\n\n---\n**📚 참조 출처**\n';
+                        data.sources.forEach((source, idx) => {
+                            const filename = source.filename || '문서';
+                            const page = source.page ? ` (${source.page}페이지)` : '';
+                            formattedResponse += `${idx + 1}. 📄 ${filename}${page}\n`;
+                        });
+                    }
+
+                    setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: formattedResponse,
+                        agent_id: selectedAgentId,
+                        conversation_id: data.conversationId,
+                        sources: data.sources
+                    }]);
+                }
+
             } else {
                 await new Promise(resolve => setTimeout(resolve, 800));
                 setMessages(prev => [...prev, { role: 'assistant', content: `[${selectedAgentName}] 기능은 아직 연동되지 않았습니다.`, agent_id: selectedAgentId }]);
@@ -491,7 +595,7 @@ const ChatInterface = ({
                 ) : (
                     <div className="messages-area">
                         {messages.map((msg, idx) => {
-                            const isReport = msg.role === 'assistant' && (msg.agent_id === 'report-gen' || (typeof msg.content === 'string' && (msg.content.startsWith('#') || msg.content.includes('**'))));
+                            const isReport = msg.role === 'assistant' && (msg.agent_id === 'report-gen' || msg.agent_id === 'doc-chat' || (typeof msg.content === 'string' && (msg.content.startsWith('#') || msg.content.includes('**'))));
 
                             return (
                                 <div key={idx} className={`message ${msg.role}`}>
@@ -513,9 +617,48 @@ const ChatInterface = ({
                                                         // Handle Markdown for report agent or other markdown content
                                                         (isReport) ? (
                                                             <div className="markdown-content">
-                                                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                                                    {typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)}
-                                                                </ReactMarkdown>
+                                                                {(() => {
+                                                                    // Try to parse JSON content for doc-chat
+                                                                    if (msg.agent_id === 'doc-chat' && typeof msg.content === 'string' && msg.content.trim().startsWith('{')) {
+                                                                        try {
+                                                                            const parsed = JSON.parse(msg.content);
+                                                                            if (parsed.answer) {
+                                                                                return (
+                                                                                    <>
+                                                                                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{parsed.answer}</ReactMarkdown>
+                                                                                        {parsed.sources && parsed.sources.length > 0 && (
+                                                                                            <details className="doc-sources-details">
+                                                                                                <summary className="sources-summary">
+                                                                                                    <span>📚 참조 문서 ({parsed.sources.length})</span>
+                                                                                                    <svg className="arrow-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                                                                        <polyline points="6 9 12 15 18 9"></polyline>
+                                                                                                    </svg>
+                                                                                                </summary>
+                                                                                                <div className="doc-sources-list">
+                                                                                                    {parsed.sources.map((s, i) => (
+                                                                                                        <div key={i} className="source-item">
+                                                                                                            <span className="source-name">{s.filename}</span>
+                                                                                                            <span className="source-page">{s.page}p</span>
+                                                                                                        </div>
+                                                                                                    ))}
+                                                                                                </div>
+                                                                                            </details>
+                                                                                        )}
+                                                                                    </>
+                                                                                );
+                                                                            }
+                                                                        } catch (e) {
+                                                                            // Parsing failed, fall back to raw content
+                                                                        }
+                                                                    }
+
+                                                                    // Default markdown rendering
+                                                                    return (
+                                                                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                                            {typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)}
+                                                                        </ReactMarkdown>
+                                                                    );
+                                                                })()}
                                                             </div>
                                                         ) : (
                                                             <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: 0 }}>
@@ -948,6 +1091,61 @@ const ChatInterface = ({
                     margin-bottom: 12px;
                     box-shadow: 0 4px 12px rgba(0,0,0,0.08);
                     animation: slideUp 0.2s ease-out;
+                }
+
+                .doc-sources-details {
+                    margin-top: 16px;
+                    border-top: 1px solid #e1e1e6;
+                }
+                .sources-summary {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: 12px 4px;
+                    cursor: pointer;
+                    user-select: none;
+                    list-style: none; /* Hide default triangle */
+                    font-size: 13px;
+                    font-weight: 600;
+                    color: #8e8e93;
+                }
+                .sources-summary::-webkit-details-marker {
+                    display: none;
+                }
+                .sources-summary:hover {
+                    color: #007AFF;
+                }
+                .arrow-icon {
+                    transition: transform 0.2s;
+                    color: #8e8e93;
+                }
+                .doc-sources-details[open] .arrow-icon {
+                    transform: rotate(180deg);
+                }
+                .doc-sources-list {
+                    padding-bottom: 8px;
+                    animation: slideUp 0.2s ease-out;
+                }
+                .source-item {
+                    display: flex;
+                    justify-content: space-between;
+                    font-size: 12px;
+                    color: #555;
+                    padding: 6px 10px;
+                    background: #f8f9fa;
+                    border-radius: 8px;
+                    margin-bottom: 6px;
+                }
+                .source-name {
+                    font-weight: 500;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                    max-width: 80%;
+                }
+                .source-page {
+                    color: #007AFF;
+                    font-weight: 600;
                 }
                 @keyframes slideUp {
                     from { opacity: 0; transform: translateY(10px); }

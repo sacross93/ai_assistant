@@ -21,8 +21,7 @@ const nextConfig = {
             : config.watchOptions?.ignored
               ? [config.watchOptions.ignored]
               : []),
-          '**/database.sqlite',
-          '**/database.sqlite-journal',
+          '**/database.sqlite*',
           '**/temp_data/**',
         ],
       };
