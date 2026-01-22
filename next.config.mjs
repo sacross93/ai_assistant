@@ -13,16 +13,25 @@ const nextConfig = {
 
   webpack: (config, { dev }) => {
     if (dev) {
+      // 기존 ignored 설정 가져오기
+      const existingIgnored = Array.isArray(config.watchOptions?.ignored)
+        ? config.watchOptions.ignored
+        : config.watchOptions?.ignored
+          ? [config.watchOptions.ignored]
+          : [];
+
+      // 빈 문자열 필터링 후 새로운 패턴 추가
+      const filteredIgnored = existingIgnored.filter(item => item && item.length > 0);
+
       config.watchOptions = {
         ...config.watchOptions,
         ignored: [
-          ...(Array.isArray(config.watchOptions?.ignored)
-            ? config.watchOptions.ignored
-            : config.watchOptions?.ignored
-              ? [config.watchOptions.ignored]
-              : []),
+          ...filteredIgnored,
+          '**/node_modules/**',
+          '**/.next/**',
           '**/database.sqlite*',
           '**/temp_data/**',
+          '**/*.log',
         ],
       };
     }

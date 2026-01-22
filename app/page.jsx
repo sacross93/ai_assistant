@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import SidebarHistory from '@/components/SidebarHistory';
 import ChatInterface from '@/components/ChatInterface';
@@ -85,12 +85,21 @@ function HomeContent() {
 
     // Effect: Sync URL query param -> State
     // 브라우저 새로고침이나 뒤로가기 시 URL에 있는 conversationId를 복구합니다.
+    // 주의: currentConversationId를 의존성에서 제거하여 무한 루프 방지
+    const prevParamIdRef = useRef(undefined); // undefined로 초기화하여 첫 실행 감지
+    const conversationIdFromUrl = searchParams.get('conversationId');
+
     useEffect(() => {
-        const paramId = searchParams.get('conversationId');
-        if (paramId !== currentConversationId) {
-            setCurrentConversationId(paramId || null);
-        }
-    }, [searchParams, currentConversationId]);
+        // 실제 값이 변경되지 않았으면 무시
+        if (conversationIdFromUrl === prevParamIdRef.current) return;
+
+        // null → null 전환도 무시 (불필요한 상태 업데이트 방지)
+        if (conversationIdFromUrl === null && prevParamIdRef.current === null) return;
+
+        console.log(`[page.jsx] URL param changed: ${prevParamIdRef.current} → ${conversationIdFromUrl}`);
+        prevParamIdRef.current = conversationIdFromUrl;
+        setCurrentConversationId(conversationIdFromUrl || null);
+    }, [conversationIdFromUrl]);
 
     // Handlers
     const toggleHistory = () => {
@@ -98,11 +107,15 @@ function HomeContent() {
     };
 
     const handleSelectConversation = (convId) => {
+        // 이미 같은 대화면 무시 (불필요한 라우터 호출 방지)
+        if (String(convId) === String(currentConversationId)) return;
         // 상태를 직접 변경하기보다 URL을 변경하여 위 useEffect가 처리하도록 함 (Single Source of Truth)
         router.push(`/?conversationId=${convId}`);
     };
 
     const handleConversationChange = (newConvId) => {
+        // 이미 같은 대화면 무시
+        if (String(newConvId) === String(currentConversationId)) return;
         // 새 대화가 생성되었을 때 URL을 업데이트 (replace로 히스토리 꼬임 방지)
         router.replace(`/?conversationId=${newConvId}`);
     };

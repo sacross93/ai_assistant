@@ -96,17 +96,42 @@ const ChatInterface = ({
         }
     };
 
+    // 이전 conversationId 추적 (중복 호출 방지)
+    const prevConversationIdRef = useRef(null);
+
     // Sync prop to state if it changes
     useEffect(() => {
+        // 이전 값과 같으면 무시 (불필요한 API 호출 방지)
+        if (String(currentConversationId) === String(prevConversationIdRef.current)) {
+            return;
+        }
+
+        // 로딩 중이면 상태 변경 무시 (작업 도중 새로고침 방지)
+        if (isLoading) {
+            console.warn('[ChatInterface] Ignoring conversation change during loading');
+            return;
+        }
+
+        prevConversationIdRef.current = currentConversationId;
+
         if (currentConversationId) {
             setConversationId(currentConversationId);
             // Load messages for this conversation (If parent logic doesn't handle it)
             fetchMessages(currentConversationId);
         } else {
-            setConversationId(null);
-            setMessages([]);
+            // null로 바뀔 때: 새 대화 시작
+            // 단, 현재 입력 중인 내용이 있으면 메시지를 바로 지우지 않음
+            if (input.trim() === '' && messages.length === 0) {
+                setConversationId(null);
+                setMessages([]);
+            } else {
+                // 입력 중이거나 메시지가 있으면 conversationId만 null로 설정 (새 대화 준비)
+                // 메시지는 유지하여 사용자가 작업 도중 잃어버리지 않도록 함
+                setConversationId(null);
+                console.log('[ChatInterface] New chat mode - keeping existing messages until new message sent');
+            }
         }
-    }, [currentConversationId]);
+    }, [currentConversationId, isLoading, input, messages.length]);
 
     const fetchMessages = async (convId) => {
         try {
