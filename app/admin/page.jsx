@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 
 export default function AdminPage() {
     const [users, setUsers] = useState([]);
+    const [agents, setAgents] = useState([]); // NEW: Agents State
     const [loading, setLoading] = useState(true);
     const router = useRouter();
     const [confirmModal, setConfirmModal] = useState({
@@ -15,6 +16,7 @@ export default function AdminPage() {
 
     useEffect(() => {
         fetchUsers();
+        fetchAgents(); // NEW: Fetch Agents
     }, []);
 
     const fetchUsers = async () => {
@@ -24,13 +26,88 @@ export default function AdminPage() {
                 const data = await res.json();
                 setUsers(data.users);
             } else {
-                // Unauthorized or error
                 router.push('/');
             }
         } catch (error) {
             console.error(error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    // NEW: Fetch Agents
+    const fetchAgents = async () => {
+        try {
+            const res = await fetch('/api/admin/agents');
+            if (res.ok) {
+                const data = await res.json();
+                setAgents(data.agents);
+            }
+        } catch (error) {
+            console.error('Failed to fetch agents:', error);
+        }
+    };
+
+    // NEW: Handle Move Up
+    const moveAgentUp = async (index) => {
+        if (index === 0) return;
+        const newAgents = [...agents];
+        // Swap
+        [newAgents[index - 1], newAgents[index]] = [newAgents[index], newAgents[index - 1]];
+        // Update indices locally
+        newAgents.forEach((agent, i) => agent.order_index = i);
+        setAgents(newAgents);
+
+        // Save to DB
+        await saveAgentOrder(newAgents);
+    };
+
+    // NEW: Handle Move Down
+    const moveAgentDown = async (index) => {
+        if (index === agents.length - 1) return;
+        const newAgents = [...agents];
+        // Swap
+        [newAgents[index + 1], newAgents[index]] = [newAgents[index], newAgents[index + 1]];
+        // Update indices locally
+        newAgents.forEach((agent, i) => agent.order_index = i);
+        setAgents(newAgents);
+
+        // Save to DB
+        await saveAgentOrder(newAgents);
+    };
+
+    // NEW: Save Order to DB
+    const saveAgentOrder = async (updatedAgents) => {
+        try {
+            await fetch('/api/admin/agents/reorder', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ agents: updatedAgents.map(({ id, order_index }) => ({ id, order_index })) })
+            });
+        } catch (error) {
+            console.error('Failed to save order:', error);
+            alert('순서 저장 실패');
+            fetchAgents(); // Revert
+        }
+    };
+
+    // NEW: Toggle Visibility
+    const toggleAgentVisibility = async (agentId, currentStatus) => {
+        const newStatus = !currentStatus;
+        // Optimistic Update
+        setAgents(agents.map(a => a.id === agentId ? { ...a, is_active: newStatus ? 1 : 0 } : a));
+
+        try {
+            const res = await fetch('/api/admin/agents/toggle', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ agentId, isActive: newStatus })
+            });
+            if (!res.ok) throw new Error('Failed');
+        } catch (error) {
+            console.error('Failed to toggle visibility:', error);
+            alert('상태 변경 실패');
+            fetchAgents(); // Revert
         }
     };
 
@@ -114,8 +191,93 @@ export default function AdminPage() {
     if (loading) return <div>Loading...</div>;
 
     return (
-        <div style={{ padding: '40px', maxWidth: '800px', margin: '0 auto' }}>
+        <div style={{ padding: '40px', maxWidth: '1000px', margin: '0 auto' }}> {/* Increased maxWidth */}
             <h1 style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '24px' }}>관리자 대시보드</h1>
+
+            {/* NEW: Agent Management Section */}
+            <div style={{ background: 'white', borderRadius: '12px', boxShadow: 'rgba(0, 0, 0, 0.08) 0px 4px 12px', padding: '24px', marginBottom: '32px' }}>
+                <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '16px' }}>에이전트 관리</h2>
+                <p style={{ marginBottom: '16px', color: '#666', fontSize: '14px' }}>
+                    사이드바에 표시될 LLM Agent의 순서를 변경하거나 숨길 수 있습니다. (ID는 변경 불가)
+                </p>
+
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                        <tr style={{ background: '#f2f4f6', textAlign: 'left' }}>
+                            <th style={{ padding: '12px', width: '60px', borderRadius: '8px 0 0 8px' }}>순서</th>
+                            <th style={{ padding: '12px' }}>Agent Name</th>
+                            <th style={{ padding: '12px' }}>ID</th>
+                            <th style={{ padding: '12px' }}>상태</th>
+                            <th style={{ padding: '12px', borderRadius: '0 8px 8px 0', textAlign: 'center' }}>순서 변경</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {agents.map((agent, index) => (
+                            <tr key={agent.id} style={{ borderBottom: '1px solid #e5e8eb', opacity: agent.is_active ? 1 : 0.6 }}>
+                                <td style={{ padding: '12px', fontWeight: 'bold', color: '#888' }}>{index + 1}</td>
+                                <td style={{ padding: '12px' }}>
+                                    <div style={{ fontWeight: '600' }}>{agent.name}</div>
+                                    <div style={{ fontSize: '12px', color: '#888', maxWidth: '300px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                        {agent.description}
+                                    </div>
+                                </td>
+                                <td style={{ padding: '12px', fontFamily: 'monospace', color: '#666' }}>{agent.id}</td>
+                                <td style={{ padding: '12px' }}>
+                                    <button
+                                        onClick={() => toggleAgentVisibility(agent.id, agent.is_active)}
+                                        style={{
+                                            padding: '6px 12px',
+                                            borderRadius: '20px',
+                                            border: 'none',
+                                            fontSize: '12px',
+                                            fontWeight: '600',
+                                            cursor: 'pointer',
+                                            backgroundColor: agent.is_active ? '#e3f2fd' : '#f5f5f5',
+                                            color: agent.is_active ? '#2196f3' : '#9e9e9e',
+                                        }}
+                                    >
+                                        {agent.is_active ? '사용 중' : '숨김'}
+                                    </button>
+                                </td>
+                                <td style={{ padding: '12px', textAlign: 'center' }}>
+                                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                                        <button
+                                            onClick={() => moveAgentUp(index)}
+                                            disabled={index === 0}
+                                            style={{
+                                                padding: '6px 10px',
+                                                cursor: index === 0 ? 'default' : 'pointer',
+                                                border: '1px solid #ddd',
+                                                borderRadius: '6px',
+                                                background: 'white',
+                                                color: index === 0 ? '#ddd' : '#333'
+                                            }}
+                                            title="위로 이동"
+                                        >
+                                            ▲
+                                        </button>
+                                        <button
+                                            onClick={() => moveAgentDown(index)}
+                                            disabled={index === agents.length - 1}
+                                            style={{
+                                                padding: '6px 10px',
+                                                cursor: index === agents.length - 1 ? 'default' : 'pointer',
+                                                border: '1px solid #ddd',
+                                                borderRadius: '6px',
+                                                background: 'white',
+                                                color: index === agents.length - 1 ? '#ddd' : '#333'
+                                            }}
+                                            title="아래로 이동"
+                                        >
+                                            ▼
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
 
             <div style={{ background: 'white', borderRadius: '12px', boxShadow: 'rgba(0, 0, 0, 0.08) 0px 4px 12px', padding: '24px' }}>
                 <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '16px' }}>사용자 관리</h2>

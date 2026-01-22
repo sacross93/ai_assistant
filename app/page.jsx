@@ -9,6 +9,10 @@ import { agents } from '@/data/agents';
 
 function HomeContent() {
     // State
+    // NEW: Agents State
+    const [agents, setAgents] = useState([]);
+    const [isLoadingAgents, setIsLoadingAgents] = useState(true);
+
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
     const [selectedAgentId, setSelectedAgentId] = useState(null);
     const [modalAgentId, setModalAgentId] = useState(null);
@@ -23,6 +27,24 @@ function HomeContent() {
 
     const router = useRouter();
     const searchParams = useSearchParams();
+
+    // Fetch Agents on Mount
+    useEffect(() => {
+        const fetchAgents = async () => {
+            try {
+                const res = await fetch('/api/agents');
+                if (res.ok) {
+                    const data = await res.json();
+                    setAgents(data.agents || []);
+                }
+            } catch (error) {
+                console.error('Failed to fetch agents:', error);
+            } finally {
+                setIsLoadingAgents(false);
+            }
+        };
+        fetchAgents();
+    }, []);
 
     // Fetch RAG documents when doc-chat agent is selected
     useEffect(() => {
@@ -180,6 +202,8 @@ function HomeContent() {
     const selectedAgent = agents.find(a => a.id === selectedAgentId);
     const modalAgent = agents.find(a => a.id === modalAgentId);
 
+    if (isLoadingAgents) return <div className="loading-screen">Loading...</div>;
+
     return (
         <>
             <div className="app-container">
@@ -205,6 +229,7 @@ function HomeContent() {
 
                 {/* Main Content */}
                 <ChatInterface
+                    agents={agents} // Pass agents to ChatInterface
                     selectedAgentName={selectedAgent ? selectedAgent.name : null}
                     selectedAgentId={selectedAgentId}
                     uploadedUrls={uploadedUrls}
@@ -223,7 +248,7 @@ function HomeContent() {
 
                 {/* Right Sidebar */}
                 <SidebarTools
-                    agents={agents}
+                    agents={agents} // Pass fetched agents instead of static import
                     selectedAgentId={selectedAgentId}
                     onSelectAgent={handleSelectAgent}
                     onOpenModal={handleOpenModal}

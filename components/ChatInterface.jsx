@@ -4,13 +4,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import STTResultCard from './STTResultCard';
 
-const AGENT_LABELS = {
-    'translate_language': '번역 에이전트',
-    'stt-summary': '영상 분석 에이전트',
-    'report-gen': '보고서 에이전트',
-    'spellcheck': '맞춤법 에이전트',
-    'doc-chat': '문서 기반 챗봇',
-};
+// REMOVED CONSTANT AGENT_LABELS to use dynamic props
+
 
 // Loading text helper function (used inline in ChatInterface)
 const getLoadingInfo = (id) => {
@@ -77,7 +72,8 @@ const ChatInterface = ({
     // RAG Document Props
     selectedDocIds = [],
     useAllDocs = true,
-    onDocumentUploaded
+    onDocumentUploaded,
+    agents = [] // NEW: Agents List for Labels
 }) => {
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
@@ -768,9 +764,9 @@ const ChatInterface = ({
                                         </div>
 
                                         {/* Agent Label UI */}
-                                        {msg.role === 'assistant' && msg.agent_id && AGENT_LABELS[msg.agent_id] && (
+                                        {msg.role === 'assistant' && msg.agent_id && (
                                             <div className="agent-label">
-                                                {AGENT_LABELS[msg.agent_id]}
+                                                {agents.find(a => a.id === msg.agent_id)?.name || msg.agent_id}
                                             </div>
                                         )}
                                     </div>
