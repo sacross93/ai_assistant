@@ -12,6 +12,40 @@ const AGENT_LABELS = {
     'doc-chat': '문서 기반 챗봇',
 };
 
+// Loading text helper function (used inline in ChatInterface)
+const getLoadingInfo = (id) => {
+    switch (id) {
+        case 'translate_language':
+            return { emoji: '🌐', text: '내용을 번역하고 있습니다' };
+        case 'report-gen':
+            return { emoji: '📝', text: '보고서를 작성하고 있습니다' };
+        case 'spellcheck':
+            return { emoji: '✍️', text: '맞춤법을 검사하고 있습니다' };
+        case 'doc-chat':
+            return { emoji: '🔍', text: '관련 문서를 확인하고 답변을 생성 중입니다' };
+        case 'stt-summary':
+            return { emoji: '🎙️', text: '영상을 분석하고 있습니다' };
+        default:
+            return { emoji: '⚙️', text: '요청을 처리하고 있습니다' };
+    }
+};
+
+const getVideoDuration = (file) => {
+    return new Promise((resolve) => {
+        const video = document.createElement('video');
+        video.preload = 'metadata';
+        video.onloadedmetadata = function () {
+            window.URL.revokeObjectURL(video.src);
+            resolve(video.duration);
+        };
+        video.onerror = function () {
+            resolve(0);
+        };
+        video.src = URL.createObjectURL(file);
+    });
+};
+
+
 /**
  * ChatInterface Component
  * Main chat area.
@@ -48,6 +82,7 @@ const ChatInterface = ({
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [loadingSeconds, setLoadingSeconds] = useState(0);
     const [conversationId, setConversationId] = useState(currentConversationId);
 
     // New State for Attachment Menu
@@ -119,19 +154,23 @@ const ChatInterface = ({
             // Load messages for this conversation (If parent logic doesn't handle it)
             fetchMessages(currentConversationId);
         } else {
-            // null로 바뀔 때: 새 대화 시작
-            // 단, 현재 입력 중인 내용이 있으면 메시지를 바로 지우지 않음
-            if (input.trim() === '' && messages.length === 0) {
-                setConversationId(null);
-                setMessages([]);
-            } else {
-                // 입력 중이거나 메시지가 있으면 conversationId만 null로 설정 (새 대화 준비)
-                // 메시지는 유지하여 사용자가 작업 도중 잃어버리지 않도록 함
-                setConversationId(null);
-                console.log('[ChatInterface] New chat mode - keeping existing messages until new message sent');
-            }
+            // null로 바뀔 때: 새 대화 시작 - 항상 메시지 초기화
+            setConversationId(null);
+            setMessages([]);
+            console.log('[ChatInterface] New chat started - messages cleared');
         }
-    }, [currentConversationId, isLoading, input, messages.length]);
+    }, [currentConversationId, isLoading]);
+
+    // Loading timer effect
+    useEffect(() => {
+        if (isLoading) {
+            setLoadingSeconds(0);
+            const interval = setInterval(() => {
+                setLoadingSeconds(s => s + 1);
+            }, 1000);
+            return () => clearInterval(interval);
+        }
+    }, [isLoading]);
 
     const fetchMessages = async (convId) => {
         try {
@@ -268,6 +307,20 @@ const ChatInterface = ({
                     out_formats: 'txt'
                 };
 
+
+                // Calculate durations for files if any
+                const fileDurations = {};
+                if (uploadedFiles && uploadedFiles.length > 0) {
+                    await Promise.all(uploadedFiles.map(async (f) => {
+                        try {
+                            const d = await getVideoDuration(f);
+                            fileDurations[f.name] = d;
+                        } catch (e) {
+                            console.error("Duration check failed", e);
+                        }
+                    }));
+                }
+
                 // Case 1: File Upload (Priority)
                 if (uploadedFiles.length > 0) {
                     const formData = new FormData();
@@ -313,10 +366,27 @@ const ChatInterface = ({
                         const output = r.output;
                         if (output && output.success && output.request_id) {
                             const loadingMsgId = Date.now() + Math.random();
+                            let durationMsg = "";
+                            const dur = fileDurations[r.url]; // r.url contains filename for file uploads
+
+                            if (dur && dur > 0) {
+                                // Formula: Base 10s + 1s per 10s of video
+                                const additionalSec = Math.ceil(dur / 10);
+                                const totalSec = 10 + additionalSec;
+
+                                if (totalSec >= 60) {
+                                    const min = Math.floor(totalSec / 60);
+                                    const sec = totalSec % 60;
+                                    durationMsg = `\n예상 소요 시간: 약 ${min}분 ${sec > 0 ? sec + '초' : ''}`;
+                                } else {
+                                    durationMsg = `\n예상 소요 시간: 약 ${totalSec}초`;
+                                }
+                            }
+
                             setMessages(prev => [...prev, {
                                 id: loadingMsgId,
                                 role: 'assistant',
-                                content: `분석을 시작합니다.\n최대 30초 정도 소요될 수 있습니다.`,
+                                content: `분석을 시작합니다.${durationMsg}`,
                                 isPolling: true,
                                 url: r.url,
                                 agent_id: selectedAgentId,
@@ -707,13 +777,33 @@ const ChatInterface = ({
                                 </div>
                             );
                         })}
-                        {isLoading && (
-                            <div className="message assistant">
-                                <div className="message-bubble typing-indicator">
-                                    <span>.</span><span>.</span><span>.</span>
+                        {isLoading && (() => {
+                            const loadingInfo = getLoadingInfo(selectedAgentId);
+                            return (
+                                <div className="message assistant">
+                                    <div className="message-content-wrapper">
+                                        <div className="message-bubble loading-bubble">
+                                            <div className="loading-header">
+                                                <span className="loading-emoji">{loadingInfo.emoji}</span>
+                                                <div className="loading-content">
+                                                    <div className="loading-title">{loadingInfo.text}</div>
+                                                    <div className="loading-timer">
+                                                        <span className="timer-dot">●</span>
+                                                        <span className="timer-text">{loadingSeconds}초 경과</span>
+                                                    </div>
+                                                </div>
+                                                <div className="loading-spinner">
+                                                    <div className="spinner-ring"></div>
+                                                </div>
+                                            </div>
+                                            <div className="loading-progress-bar">
+                                                <div className="progress-fill"></div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
-                        )}
+                            );
+                        })()}
                         <div ref={messagesEndRef} />
                     </div>
                 )}
@@ -943,7 +1033,143 @@ const ChatInterface = ({
                     cursor: pointer;
                 }
                 
-                 /* Polling / Loading Styles */
+                
+                 /* Loading Bubble Styles */
+                .loading-bubble {
+                    background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%) !important;
+                    border: 1.5px solid #e0e7ff !important;
+                    box-shadow: 0 4px 20px rgba(99, 102, 241, 0.08) !important;
+                    padding: 16px !important;
+                    width: 100%;
+                    max-width: 450px;
+                    box-sizing: border-box;
+                }
+
+                .loading-header {
+                    display: flex;
+                    align-items: center;
+                    gap: 14px;
+                    margin-bottom: 12px;
+                }
+
+                .loading-emoji {
+                    font-size: 32px;
+                    line-height: 1;
+                    animation: bounce 2s ease-in-out infinite;
+                    flex-shrink: 0;
+                }
+
+                @keyframes bounce {
+                    0%, 100% { transform: translateY(0); }
+                    50% { transform: translateY(-5px); }
+                }
+
+                .loading-content {
+                    flex: 1;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 6px;
+                    min-width: 0;
+                }
+
+                .loading-title {
+                    font-size: 15px;
+                    font-weight: 600;
+                    color: #334155;
+                    line-height: 1.4;
+                    word-wrap: break-word;
+                }
+
+                .loading-timer {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    font-size: 13px;
+                    color: #6366f1;
+                }
+
+                .timer-dot {
+                    font-size: 8px;
+                    animation: pulse 2s ease-in-out infinite;
+                }
+
+                @keyframes pulse {
+                    0%, 100% { opacity: 1; }
+                    50% { opacity: 0.4; }
+                }
+
+                .timer-text {
+                    font-weight: 500;
+                }
+
+                .loading-spinner {
+                    width: 40px;
+                    height: 40px;
+                    position: relative;
+                    flex-shrink: 0;
+                }
+
+                .spinner-ring {
+                    width: 100%;
+                    height: 100%;
+                    border: 3px solid #e0e7ff;
+                    border-top-color: #6366f1;
+                    border-radius: 50%;
+                    animation: spin 1s linear infinite;
+                }
+
+                @keyframes spin {
+                    to { transform: rotate(360deg); }
+                }
+
+                .loading-progress-bar {
+                    height: 4px;
+                    background: #e0e7ff;
+                    border-radius: 2px;
+                    overflow: hidden;
+                    margin-top: 4px;
+                }
+
+                .progress-fill {
+                    height: 100%;
+                    background: linear-gradient(90deg, #6366f1, #8b5cf6, #6366f1);
+                    background-size: 200% 100%;
+                    animation: shimmer 2s ease-in-out infinite;
+                    border-radius: 2px;
+                }
+
+                @keyframes shimmer {
+                    0% { background-position: -200% 0; }
+                    100% { background-position: 200% 0; }
+                }
+
+                /* Mobile Responsive Styles for Loading */
+                @media (max-width: 600px) {
+                    .loading-bubble {
+                        padding: 12px !important;
+                        max-width: 100%;
+                    }
+                    
+                    .loading-emoji {
+                        font-size: 24px;
+                    }
+                    
+                    .loading-title {
+                        font-size: 14px;
+                    }
+
+                    .loading-timer {
+                        font-size: 12px;
+                    }
+
+                    .loading-spinner {
+                        width: 32px;
+                        height: 32px;
+                    }
+                }
+
+
+                /* Old Polling Styles - Keep for STT compatibility */
                 .polling-indicator {
                     display: flex;
                     align-items: center;

@@ -121,7 +121,14 @@ function HomeContent() {
     };
 
     const handleNewChat = () => {
-        // URL 파라미터 제거 -> useEffect가 감지하여 setCurrentConversationId(null) 수행
+        // Clear current conversation ID first
+        setCurrentConversationId(null);
+
+        // Clear file attachments
+        setUploadedFiles([]);
+        setUploadedUrls([]);
+
+        // Navigate to root, removing conversationId param
         router.push('/');
         // 모바일 등에서 자동으로 사이드바 닫히는 동작은 SidebarHistory 내부에서 처리됨
     };
