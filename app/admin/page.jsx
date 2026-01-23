@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import FeaturesEditModal from '@/components/FeaturesEditModal';
 
 export default function AdminPage() {
     const [users, setUsers] = useState([]);
@@ -12,6 +13,14 @@ export default function AdminPage() {
         type: null,
         userId: null,
         message: ''
+    });
+    const [editingCell, setEditingCell] = useState(null); // { agentId, field }
+    const [tempValues, setTempValues] = useState({}); // { [agentId]: { name, description } }
+    const [featuresModal, setFeaturesModal] = useState({
+        isOpen: false,
+        agentId: null,
+        agentName: '',
+        features: []
     });
 
     useEffect(() => {
@@ -111,6 +120,110 @@ export default function AdminPage() {
         }
     };
 
+    // NEW: Start editing a cell
+    const handleStartEdit = (agentId, field, currentValue) => {
+        setEditingCell({ agentId, field });
+        const agent = agents.find(a => a.id === agentId);
+        setTempValues({
+            ...tempValues,
+            [agentId]: {
+                ...agent,
+                [field]: currentValue
+            }
+        });
+    };
+
+    // NEW: Cancel editing
+    const handleCancelEdit = () => {
+        setEditingCell(null);
+    };
+
+    // NEW: Save edited value
+    const handleSaveEdit = async (agentId, field) => {
+        const newValue = tempValues[agentId]?.[field];
+        const originalAgent = agents.find(a => a.id === agentId);
+
+        // Validation
+        if (field === 'name' && !newValue?.trim()) {
+            alert('Agent 이름은 필수입니다.');
+            return;
+        }
+
+        // Optimistic Update
+        setAgents(agents.map(a =>
+            a.id === agentId ? { ...a, [field]: newValue } : a
+        ));
+        setEditingCell(null);
+
+        try {
+            const res = await fetch('/api/admin/agents/update', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    agentId,
+                    name: field === 'name' ? newValue : originalAgent.name,
+                    description: field === 'description' ? newValue : originalAgent.description
+                })
+            });
+
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.error || 'Update failed');
+            }
+        } catch (error) {
+            console.error('Update failed:', error);
+            alert(`수정 실패: ${error.message}`);
+            // Revert on error
+            fetchAgents();
+        }
+    };
+
+    // NEW: Update temporary value
+    const handleTempChange = (agentId, field, value) => {
+        setTempValues({
+            ...tempValues,
+            [agentId]: { ...tempValues[agentId], [field]: value }
+        });
+    };
+
+    // NEW: Open features modal
+    const openFeaturesModal = (agent) => {
+        setFeaturesModal({
+            isOpen: true,
+            agentId: agent.id,
+            agentName: agent.name,
+            features: [...(agent.features || [])]
+        });
+    };
+
+    // NEW: Save features modal
+    const saveFeaturesModal = async (features) => {
+        const agentId = featuresModal.agentId;
+
+        // Optimistic Update
+        setAgents(agents.map(a =>
+            a.id === agentId ? { ...a, features } : a
+        ));
+        setFeaturesModal({ isOpen: false, agentId: null, agentName: '', features: [] });
+
+        try {
+            const res = await fetch('/api/admin/agents/update', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ agentId, features })
+            });
+
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.error || 'Update failed');
+            }
+        } catch (error) {
+            console.error('Features update failed:', error);
+            alert(`주요 기능 수정 실패: ${error.message}`);
+            fetchAgents(); // Revert on error
+        }
+    };
+
     const handleUpdateRole = async (userId, newRole) => {
         try {
             const res = await fetch('/api/admin/update-role', {
@@ -198,15 +311,16 @@ export default function AdminPage() {
             <div style={{ background: 'white', borderRadius: '12px', boxShadow: 'rgba(0, 0, 0, 0.08) 0px 4px 12px', padding: '24px', marginBottom: '32px' }}>
                 <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '16px' }}>에이전트 관리</h2>
                 <p style={{ marginBottom: '16px', color: '#666', fontSize: '14px' }}>
-                    사이드바에 표시될 LLM Agent의 순서를 변경하거나 숨길 수 있습니다. (ID는 변경 불가)
+                    사이드바에 표시될 LLM Agent를 관리합니다. Name과 Description은 클릭하여 수정 가능하며, ID는 변경할 수 없습니다.
                 </p>
 
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                         <tr style={{ background: '#f2f4f6', textAlign: 'left' }}>
-                            <th style={{ padding: '12px', width: '60px', borderRadius: '8px 0 0 8px' }}>순서</th>
-                            <th style={{ padding: '12px' }}>Agent Name</th>
+                            <th style={{ padding: '12px', width: '60px', borderRadius: '8px 0 0 0' }}>순서</th>
+                            <th style={{ padding: '12px' }}>Name / Description (클릭하여 수정)</th>
                             <th style={{ padding: '12px' }}>ID</th>
+                            <th style={{ padding: '12px' }}>주요 기능</th>
                             <th style={{ padding: '12px' }}>상태</th>
                             <th style={{ padding: '12px', borderRadius: '0 8px 8px 0', textAlign: 'center' }}>순서 변경</th>
                         </tr>
@@ -216,12 +330,106 @@ export default function AdminPage() {
                             <tr key={agent.id} style={{ borderBottom: '1px solid #e5e8eb', opacity: agent.is_active ? 1 : 0.6 }}>
                                 <td style={{ padding: '12px', fontWeight: 'bold', color: '#888' }}>{index + 1}</td>
                                 <td style={{ padding: '12px' }}>
-                                    <div style={{ fontWeight: '600' }}>{agent.name}</div>
-                                    <div style={{ fontSize: '12px', color: '#888', maxWidth: '300px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                        {agent.description}
+                                    {editingCell?.agentId === agent.id && editingCell?.field === 'name' ? (
+                                        <input
+                                            type="text"
+                                            value={tempValues[agent.id]?.name ?? agent.name}
+                                            onChange={(e) => handleTempChange(agent.id, 'name', e.target.value)}
+                                            onBlur={() => handleSaveEdit(agent.id, 'name')}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') handleSaveEdit(agent.id, 'name');
+                                                if (e.key === 'Escape') handleCancelEdit();
+                                            }}
+                                            autoFocus
+                                            style={{
+                                                fontWeight: '600',
+                                                fontSize: '14px',
+                                                padding: '4px 8px',
+                                                border: '2px solid #007AFF',
+                                                borderRadius: '4px',
+                                                outline: 'none',
+                                                width: '100%'
+                                            }}
+                                        />
+                                    ) : (
+                                        <div
+                                            onClick={() => handleStartEdit(agent.id, 'name', agent.name)}
+                                            style={{
+                                                fontWeight: '600',
+                                                cursor: 'pointer',
+                                                padding: '4px',
+                                                borderRadius: '4px',
+                                                transition: 'background 0.2s'
+                                            }}
+                                            onMouseEnter={(e) => e.target.style.background = '#f5f5f7'}
+                                            onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                                        >
+                                            {agent.name}
+                                        </div>
+                                    )}
+
+                                    <div style={{ marginTop: '4px' }}>
+                                        {editingCell?.agentId === agent.id && editingCell?.field === 'description' ? (
+                                            <textarea
+                                                value={tempValues[agent.id]?.description ?? agent.description}
+                                                onChange={(e) => handleTempChange(agent.id, 'description', e.target.value)}
+                                                onBlur={() => handleSaveEdit(agent.id, 'description')}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter' && e.ctrlKey) handleSaveEdit(agent.id, 'description');
+                                                    if (e.key === 'Escape') handleCancelEdit();
+                                                }}
+                                                autoFocus
+                                                rows="2"
+                                                style={{
+                                                    fontSize: '12px',
+                                                    padding: '4px 8px',
+                                                    border: '2px solid #007AFF',
+                                                    borderRadius: '4px',
+                                                    outline: 'none',
+                                                    width: '100%',
+                                                    resize: 'vertical',
+                                                    fontFamily: 'inherit'
+                                                }}
+                                            />
+                                        ) : (
+                                            <div
+                                                onClick={() => handleStartEdit(agent.id, 'description', agent.description)}
+                                                style={{
+                                                    fontSize: '12px',
+                                                    color: '#888',
+                                                    maxWidth: '300px',
+                                                    cursor: 'pointer',
+                                                    padding: '4px',
+                                                    borderRadius: '4px',
+                                                    whiteSpace: 'nowrap',
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis'
+                                                }}
+                                                onMouseEnter={(e) => e.target.style.background = '#f5f5f7'}
+                                                onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                                            >
+                                                {agent.description}
+                                            </div>
+                                        )}
                                     </div>
                                 </td>
                                 <td style={{ padding: '12px', fontFamily: 'monospace', color: '#666' }}>{agent.id}</td>
+                                <td style={{ padding: '12px' }}>
+                                    <button
+                                        onClick={() => openFeaturesModal(agent)}
+                                        style={{
+                                            padding: '6px 12px',
+                                            fontSize: '12px',
+                                            borderRadius: '6px',
+                                            border: '1px solid #e5e8eb',
+                                            background: 'white',
+                                            cursor: 'pointer',
+                                            color: '#333'
+                                        }}
+                                    >
+                                        편집 ({agent.features?.length || 0})
+                                    </button>
+                                </td>
                                 <td style={{ padding: '12px' }}>
                                     <button
                                         onClick={() => toggleAgentVisibility(agent.id, agent.is_active)}
@@ -417,6 +625,21 @@ export default function AdminPage() {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Features Edit Modal */}
+            {featuresModal.isOpen && (
+                <FeaturesEditModal
+                    agentName={featuresModal.agentName}
+                    features={featuresModal.features}
+                    onSave={saveFeaturesModal}
+                    onCancel={() => setFeaturesModal({
+                        isOpen: false,
+                        agentId: null,
+                        agentName: '',
+                        features: []
+                    })}
+                />
             )}
         </div>
     );
