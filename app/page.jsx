@@ -5,6 +5,7 @@ import SidebarHistory from '@/components/SidebarHistory';
 import ChatInterface from '@/components/ChatInterface';
 import SidebarTools from '@/components/SidebarTools';
 import AgentModal from '@/components/AgentModal';
+import MobileTabBar from '@/components/MobileTabBar';
 import { agents } from '@/data/agents';
 
 function HomeContent() {
@@ -19,6 +20,10 @@ function HomeContent() {
     const [uploadedFiles, setUploadedFiles] = useState([]);
     const [uploadedUrls, setUploadedUrls] = useState([]);
     const [currentConversationId, setCurrentConversationId] = useState(null);
+
+    // Mobile states
+    const [activeMobileTab, setActiveMobileTab] = useState('chat');
+    const [isMobile, setIsMobile] = useState(false);
 
     // RAG Document States
     const [ragDocuments, setRagDocuments] = useState([]);
@@ -105,6 +110,23 @@ function HomeContent() {
         }
     }, [isHistoryOpen]);
 
+    // Mobile detection effect
+    useEffect(() => {
+        const checkMobile = () => {
+            const mobile = window.innerWidth <= 768;
+            setIsMobile(mobile);
+
+            // Reset to chat tab when switching to desktop
+            if (!mobile && activeMobileTab !== 'chat') {
+                setActiveMobileTab('chat');
+            }
+        };
+
+        checkMobile();
+        window.addEventListener('resize', checkMobile);
+        return () => window.removeEventListener('resize', checkMobile);
+    }, [activeMobileTab]);
+
     // Effect: Sync URL query param -> State
     // 브라우저 새로고침이나 뒤로가기 시 URL에 있는 conversationId를 복구합니다.
     // 주의: currentConversationId를 의존성에서 제거하여 무한 루프 방지
@@ -125,7 +147,13 @@ function HomeContent() {
 
     // Handlers
     const toggleHistory = () => {
-        setIsHistoryOpen(prev => !prev);
+        if (isMobile) {
+            // Mobile: toggle between history and chat tabs
+            setActiveMobileTab(prev => prev === 'history' ? 'chat' : 'history');
+        } else {
+            // Desktop: toggle sidebar
+            setIsHistoryOpen(prev => !prev);
+        }
     };
 
     const handleSelectConversation = (convId) => {
@@ -206,61 +234,80 @@ function HomeContent() {
 
     return (
         <>
-            <div className="app-container">
-                {/* Left Sidebar */}
-                <SidebarHistory
-                    isOpen={isHistoryOpen}
-                    onClose={() => setIsHistoryOpen(false)}
-                    onSelectConversation={handleSelectConversation}
-                    onNewChat={handleNewChat}
-                />
+            <div className={`app-container ${isMobile ? 'mobile-mode' : ''}`}>
+                {/* Left Sidebar - Desktop or Mobile history tab */}
+                {(!isMobile || activeMobileTab === 'history') && (
+                    <SidebarHistory
+                        isOpen={isMobile ? true : isHistoryOpen}
+                        onClose={() => isMobile ? setActiveMobileTab('chat') : setIsHistoryOpen(false)}
+                        onSelectConversation={handleSelectConversation}
+                        onNewChat={handleNewChat}
+                        isMobile={isMobile}
+                    />
+                )}
 
-                {/* History Toggle Button */}
-                <button
-                    className="history-toggle-btn"
-                    id="historyToggleBtn"
-                    onClick={toggleHistory}
-                >
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M12 8V16M8 12H16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    </svg>
-                    <span>기록</span>
-                </button>
+                {/* History Toggle Button - Desktop only */}
+                {!isMobile && (
+                    <button
+                        className="history-toggle-btn"
+                        id="historyToggleBtn"
+                        onClick={toggleHistory}
+                    >
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 8V16M8 12H16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        </svg>
+                        <span>기록</span>
+                    </button>
+                )}
 
-                {/* Main Content */}
-                <ChatInterface
-                    agents={agents} // Pass agents to ChatInterface
-                    selectedAgentName={selectedAgent ? selectedAgent.name : null}
-                    selectedAgentId={selectedAgentId}
-                    uploadedUrls={uploadedUrls}
-                    uploadedFiles={uploadedFiles}
-                    onAddFiles={handleAddFiles}
-                    onDeleteFile={handleDeleteFile}
-                    onAddUrl={handleAddUrl}
-                    onDeleteUrl={handleDeleteUrl}
-                    onClearAttachments={handleClearAttachments}
-                    currentConversationId={currentConversationId}
-                    onConversationChange={handleConversationChange}
-                    selectedDocIds={selectedDocIds}
-                    useAllDocs={useAllDocs}
-                    onDocumentUploaded={fetchRagDocuments}
-                />
+                {/* Main Content - Desktop or Mobile chat tab */}
+                {(!isMobile || activeMobileTab === 'chat') && (
+                    <ChatInterface
+                        agents={agents}
+                        selectedAgentName={selectedAgent ? selectedAgent.name : null}
+                        selectedAgentId={selectedAgentId}
+                        uploadedUrls={uploadedUrls}
+                        uploadedFiles={uploadedFiles}
+                        onAddFiles={handleAddFiles}
+                        onDeleteFile={handleDeleteFile}
+                        onAddUrl={handleAddUrl}
+                        onDeleteUrl={handleDeleteUrl}
+                        onClearAttachments={handleClearAttachments}
+                        currentConversationId={currentConversationId}
+                        onConversationChange={handleConversationChange}
+                        selectedDocIds={selectedDocIds}
+                        useAllDocs={useAllDocs}
+                        onDocumentUploaded={fetchRagDocuments}
+                        isMobile={isMobile}
+                    />
+                )}
 
-                {/* Right Sidebar */}
-                <SidebarTools
-                    agents={agents} // Pass fetched agents instead of static import
-                    selectedAgentId={selectedAgentId}
-                    onSelectAgent={handleSelectAgent}
-                    onOpenModal={handleOpenModal}
-                    onLogout={handleLogout}
-                    ragDocuments={ragDocuments}
-                    selectedDocIds={selectedDocIds}
-                    useAllDocs={useAllDocs}
-                    onToggleDocSelection={handleToggleDocSelection}
-                    onToggleAllDocs={handleToggleAllDocs}
-                    onDeleteDocument={handleDeleteRagDocument}
-                />
+                {/* Right Sidebar - Desktop or Mobile tools tab */}
+                {(!isMobile || activeMobileTab === 'tools') && (
+                    <SidebarTools
+                        agents={agents}
+                        selectedAgentId={selectedAgentId}
+                        onSelectAgent={handleSelectAgent}
+                        onOpenModal={handleOpenModal}
+                        onLogout={handleLogout}
+                        ragDocuments={ragDocuments}
+                        selectedDocIds={selectedDocIds}
+                        useAllDocs={useAllDocs}
+                        onToggleDocSelection={handleToggleDocSelection}
+                        onToggleAllDocs={handleToggleAllDocs}
+                        onDeleteDocument={handleDeleteRagDocument}
+                        isMobile={isMobile}
+                    />
+                )}
             </div>
+
+            {/* Mobile Tab Bar - Mobile only */}
+            {isMobile && (
+                <MobileTabBar
+                    activeTab={activeMobileTab}
+                    onTabChange={setActiveMobileTab}
+                />
+            )}
 
             {/* Modal */}
             <AgentModal

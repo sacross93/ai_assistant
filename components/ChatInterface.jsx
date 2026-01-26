@@ -73,7 +73,8 @@ const ChatInterface = ({
     selectedDocIds = [],
     useAllDocs = true,
     onDocumentUploaded,
-    agents = [] // NEW: Agents List for Labels
+    agents = [], // NEW: Agents List for Labels
+    isMobile = false // NEW: Mobile flag
 }) => {
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
@@ -90,6 +91,31 @@ const ChatInterface = ({
 
     const messagesEndRef = useRef(null);
     const fileInputRef = useRef(null);
+
+    // Placeholder 텍스트 생성 함수
+    const getPlaceholderText = () => {
+        // 데스크톱: 기존 로직 유지
+        if (!isMobile) {
+            return selectedAgentId === 'stt-summary'
+                ? "URL을 추가하거나 메시지를 입력하세요..."
+                : "메시지를 입력하세요...";
+        }
+
+        // 모바일: Agent 정보 포함
+        if (!selectedAgentName) {
+            return "메시지를 입력하세요...";
+        }
+
+        // Agent 이모지 가져오기
+        const agentEmoji = getLoadingInfo(selectedAgentId).emoji || '💬';
+
+        // STT는 특별 처리
+        if (selectedAgentId === 'stt-summary') {
+            return `${agentEmoji} ${selectedAgentName} | URL 또는 메시지 입력...`;
+        }
+
+        return `${agentEmoji} ${selectedAgentName} | 메시지를 입력하세요...`;
+    };
 
     // Drag and Drop Handlers
     const handleDragEnter = (e) => {
@@ -916,7 +942,7 @@ const ChatInterface = ({
                             </div>
 
                             <textarea
-                                placeholder={selectedAgentId === 'stt-summary' ? "URL을 추가하거나 메시지를 입력하세요..." : "메시지를 입력하세요..."}
+                                placeholder={getPlaceholderText()}
                                 rows="1"
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
@@ -1520,6 +1546,76 @@ const ChatInterface = ({
                     color: #6a737d;
                     border-left: 0.25em solid #dfe2e5;
                     margin: 0 0 16px 0;
+                }
+
+                /* 모바일 전용 스타일 */
+                @media (max-width: 768px) {
+                    main.main-content {
+                        margin: 0 !important;
+                        width: 100% !important;
+                        padding: 0 !important;
+                        height: 100vh;
+                        display: flex;
+                        flex-direction: column;
+                    }
+
+                    .chat-container {
+                        max-width: 100% !important;
+                        height: 100%;
+                        display: flex;
+                        flex-direction: column;
+                    }
+
+                    .messages-container {
+                        flex: 1;
+                        overflow-y: auto;
+                        padding: 16px;
+                        padding-bottom: calc(120px + env(safe-area-inset-bottom));
+                    }
+
+                    /* 모바일에서 메시지 너비 최대한 활용 */
+                    .message-content-wrapper {
+                        max-width: 95% !important;
+                    }
+
+                    .message-content-wrapper.report-wrapper {
+                        max-width: 98% !important;
+                    }
+
+                    .input-area {
+                        position: fixed;
+                        bottom: 60px;
+                        left: 0;
+                        right: 0;
+                        padding: 12px 16px;
+                        background: var(--bg-color);
+                        border-top: 1px solid var(--border-color);
+                        z-index: 1000;
+                    }
+
+                    .input-wrapper {
+                        max-width: 100%;
+                        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+                    }
+
+                    .attachment-preview {
+                        padding: 8px 16px;
+                        background: white;
+                    }
+
+                    /* 첨부 메뉴 위치 조정 */
+                    .attach-menu {
+                        bottom: calc(120px + env(safe-area-inset-bottom)) !important;
+                    }
+
+                    .welcome-message {
+                        padding-top: 40px;
+                    }
+
+                    /* Agent 표시 영역 숨김 (모바일에서만) */
+                    .selected-agent-indicator {
+                        display: none !important;
+                    }
                 }
 
             `}</style>

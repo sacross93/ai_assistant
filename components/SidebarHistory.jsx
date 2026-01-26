@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 
-const SidebarHistory = ({ isOpen, onClose, onSelectConversation, onNewChat }) => {
+const SidebarHistory = ({ isOpen, onClose, onSelectConversation, onNewChat, isMobile = false }) => {
     const [conversations, setConversations] = useState([]);
 
     useEffect(() => {
@@ -71,7 +71,7 @@ const SidebarHistory = ({ isOpen, onClose, onSelectConversation, onNewChat }) =>
     }, {});
 
     return (
-        <aside className={`sidebar-left ${isOpen ? 'open' : ''}`} id="sidebarLeft">
+        <aside className={`sidebar-left ${isOpen ? 'open' : ''} ${isMobile ? 'mobile-fullscreen' : ''}`} id="sidebarLeft">
             <div className="sidebar-header">
                 <h2>채팅 히스토리</h2>
                 <button className="close-btn" onClick={onClose}>✕</button>

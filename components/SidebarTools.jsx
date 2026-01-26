@@ -17,11 +17,12 @@ const SidebarTools = ({
     useAllDocs = true,
     onToggleDocSelection,
     onToggleAllDocs,
-    onDeleteDocument
+    onDeleteDocument,
+    isMobile = false
 }) => {
 
     return (
-        <aside className="sidebar-right" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <aside className={`sidebar-right ${isMobile ? 'mobile-fullscreen' : ''}`} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
             {/* Scrollable Content Area */}
             <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '32px' }}>
 

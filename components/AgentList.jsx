@@ -67,8 +67,8 @@ const AgentList = ({ agents, selectedAgentId, onSelectAgent, onOpenModal }) => {
                         onMouseLeave={handleMouseLeave}
                         onClick={(e) => {
                             e.stopPropagation();
-                            // 모바일 대응: 클릭 시에도 잠깐 보이거나 토글할 수 있음
-                            // 현재는 호버 위주
+                            // 모바일 대응: 클릭 시 모달 열기
+                            onOpenModal(agent.id);
                         }}
                     >
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
