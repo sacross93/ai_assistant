@@ -237,6 +237,47 @@ const ChatInterface = ({
         scrollToBottom();
     }, [messages]);
 
+    // Self-contained mobile detection - syncs with CSS media query (max-width: 768px)
+    const [isViewMobile, setIsViewMobile] = useState(false);
+
+    useEffect(() => {
+        const mediaQuery = window.matchMedia('(max-width: 768px)');
+
+        const handleChange = (e) => {
+            setIsViewMobile(e.matches);
+        };
+
+        // Set initial value
+        setIsViewMobile(mediaQuery.matches);
+
+        // Listen for changes
+        mediaQuery.addEventListener('change', handleChange);
+        return () => mediaQuery.removeEventListener('change', handleChange);
+    }, []);
+
+    // Dynamic Input Area Height Calculation for Mobile
+    const inputAreaRef = useRef(null);
+    const [inputAreaHeight, setInputAreaHeight] = useState(0);
+
+    useEffect(() => {
+        if (!inputAreaRef.current) return;
+
+        const updateHeight = () => {
+            if (inputAreaRef.current) {
+                setInputAreaHeight(inputAreaRef.current.offsetHeight);
+            }
+        };
+
+        // Initial measurement
+        updateHeight();
+
+        // Observe changes
+        const observer = new ResizeObserver(updateHeight);
+        observer.observe(inputAreaRef.current);
+
+        return () => observer.disconnect();
+    }, []);
+
     const handleSendMessage = async () => {
         if (!input.trim() && uploadedUrls?.length === 0 && uploadedFiles?.length === 0) return;
 
@@ -710,7 +751,15 @@ const ChatInterface = ({
                         <p>원하는 작업을 선택하거나 자연어로 질문해주세요.</p>
                     </div>
                 ) : (
-                    <div className="messages-area">
+                    <div
+                        className="messages-area"
+                        style={{
+                            paddingTop: isViewMobile ? 'max(16px, env(safe-area-inset-top))' : '20px',
+                            paddingBottom: isViewMobile
+                                ? `calc(60px + env(safe-area-inset-bottom) + ${inputAreaHeight || 120}px + 24px)`
+                                : undefined
+                        }}
+                    >
                         {messages.map((msg, idx) => {
                             const isReport = msg.role === 'assistant' && (msg.agent_id === 'report-gen' || msg.agent_id === 'doc-chat' || (typeof msg.content === 'string' && (msg.content.startsWith('#') || msg.content.includes('**'))));
 
@@ -826,11 +875,11 @@ const ChatInterface = ({
                                 </div>
                             );
                         })()}
-                        <div ref={messagesEndRef} />
+                        <div ref={messagesEndRef} style={{ height: 0, minHeight: 0, margin: 0 }} />
                     </div>
                 )}
 
-                <div className="input-area">
+                <div className="input-area" ref={inputAreaRef}>
                     {selectedAgentId === 'stt-summary' && (
                         <div className="stt-options">
                             <label className="checkbox-container">
@@ -885,10 +934,9 @@ const ChatInterface = ({
                         </div>
                     )}
 
-                    <div className="input-wrapper">
-
-                        {/* Attachment Preview Area */}
-                        {(uploadedFiles?.length > 0 || uploadedUrls?.length > 0) && (
+                    {/* Attachment Preview - input-wrapper 밖으로 이동 */}
+                    {(uploadedFiles?.length > 0 || uploadedUrls?.length > 0) && (
+                        <div className="attachment-preview-container">
                             <div className="attachment-preview">
                                 {uploadedFiles?.map((file, idx) => (
                                     <div key={`file-${idx}`} className="attachment-chip">
@@ -905,8 +953,10 @@ const ChatInterface = ({
                                     </div>
                                 ))}
                             </div>
-                        )}
+                        </div>
+                    )}
 
+                    <div className="input-wrapper">
                         <div className="input-row">
                             {/* Plus Button & Menu */}
                             <div className="attach-button-wrapper">
@@ -967,10 +1017,18 @@ const ChatInterface = ({
                     flex: 1;
                     overflow-y: auto;
                     padding: 20px;
+                    padding-top: 20px;
                     display: flex;
                     flex-direction: column;
                     gap: 16px;
                     max-height: calc(100vh - 240px);
+                }
+                @media (max-width: 768px) {
+                    .messages-area {
+                        max-height: none !important;
+                        height: auto;
+                        padding-top: 16px;
+                    }
                 }
                 .message {
                     display: flex;
@@ -1229,10 +1287,18 @@ const ChatInterface = ({
                 .welcome-message { max-width: 850px; margin: 0 auto; width: 100%; }
                 
                 /* New Styles for Attachment */
+                .attachment-preview-container {
+                    margin-bottom: 8px;
+                    background: white;
+                    border: 1px solid #e1e1e6;
+                    border-radius: 16px;
+                    padding: 8px 12px;
+                }
+
                 .input-wrapper {
                     display: flex;
                     flex-direction: column;
-                    gap: 8px;
+                    gap: 0;
                     border: 1px solid #e1e1e6;
                     border-radius: 20px;
                     padding: 8px 12px;
@@ -1318,7 +1384,6 @@ const ChatInterface = ({
                     display: flex;
                     flex-wrap: wrap;
                     gap: 8px;
-                    padding-bottom: 4px;
                 }
                 .attachment-chip {
                     display: flex;
@@ -1566,11 +1631,11 @@ const ChatInterface = ({
                         flex-direction: column;
                     }
 
-                    .messages-container {
+                    .messages-area {
                         flex: 1;
                         overflow-y: auto;
                         padding: 16px;
-                        padding-bottom: calc(120px + env(safe-area-inset-bottom));
+                        /* padding-bottom is handled dynamically inline */
                     }
 
                     /* 모바일에서 메시지 너비 최대한 활용 */
@@ -1590,7 +1655,7 @@ const ChatInterface = ({
                         padding: 12px 16px;
                         background: var(--bg-color);
                         border-top: 1px solid var(--border-color);
-                        z-index: 1000;
+                        z-index: 999;
                     }
 
                     .input-wrapper {
@@ -1598,9 +1663,16 @@ const ChatInterface = ({
                         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
                     }
 
-                    .attachment-preview {
-                        padding: 8px 16px;
+                    .attachment-preview-container {
+                        margin-bottom: 8px;
                         background: white;
+                        border: 1px solid #e1e1e6;
+                        border-radius: 16px;
+                        padding: 8px 16px;
+                    }
+
+                    .attachment-preview {
+                        padding: 0;
                     }
 
                     /* 첨부 메뉴 위치 조정 */
