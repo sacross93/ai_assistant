@@ -754,7 +754,7 @@ const ChatInterface = ({
                     <div
                         className="messages-area"
                         style={{
-                            paddingTop: isViewMobile ? 'max(16px, env(safe-area-inset-top))' : '20px',
+                            paddingTop: isViewMobile ? 'max(80px, calc(80px + env(safe-area-inset-top)))' : '20px',
                             paddingBottom: isViewMobile
                                 ? `calc(60px + env(safe-area-inset-bottom) + ${inputAreaHeight || 120}px + 24px)`
                                 : undefined

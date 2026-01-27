@@ -26,14 +26,20 @@ body {
   font-family: var(--font-main);
   background-color: var(--bg-color);
   color: var(--text-primary);
-  height: 100vh;
+  height: 100dvh;
+  /* Changed from 100vh to 100dvh */
   overflow: hidden;
+  /* Prevent scrolling on body itself */
+  padding-top: env(safe-area-inset-top);
+  /* Safe area for status bar */
 }
 
 .app-container {
   display: flex;
-  height: 100vh;
+  height: 100dvh;
+  /* Changed from 100vh to 100dvh */
   width: 100%;
+  position: relative;
 }
 
 /* Tip: Scrollbar styling for webkit */
@@ -591,7 +597,8 @@ textarea {
   /* 모바일 모드 전체 컨테이너 */
   .app-container.mobile-mode {
     display: block;
-    height: 100vh;
+    height: 100dvh;
+    /* Changed to dvh */
     overflow: hidden;
   }
 
@@ -632,8 +639,8 @@ textarea {
     margin: 0 !important;
     width: 100% !important;
     padding: 0 !important;
-    height: calc(100vh - 60px);
-    /* 하단 탭바 제외 */
+    height: 100dvh;
+    /* 높이는 전체 화면 사용 (패딩 포함) */
   }
 
   /* body.history-open 상태 무시 (모바일에서는 탭 전환으로 처리) */
@@ -714,6 +721,7 @@ textarea {
 }
 
 /* Safe Area Insets for iOS (노치/홈 버튼 영역 대응) */
+/* Safe Area Insets for iOS (노치/홈 버튼 영역 대응) */
 @supports (padding: max(0px)) {
   @media (max-width: 768px) {
     .mobile-tab-bar {
@@ -729,14 +737,13 @@ textarea {
     .sidebar-right.mobile-fullscreen {
       bottom: calc(60px + env(safe-area-inset-bottom));
     }
-  }
-}
 
-/* 키보드 팝업 대응 (iOS Safari viewport units) */
-@supports (-webkit-touch-callout: none) {
-  @media (max-width: 768px) {
-    .app-container.mobile-mode {
-      height: -webkit-fill-available;
+    .main-content {
+      /* Adjust height to account for bottom safe area if needed, 
+          though 100dvh usually handles the viewport correctly. 
+          But layout might need to respect the bottom inset for the tab bar specifically.
+       */
+      height: calc(100dvh - 60px - env(safe-area-inset-bottom));
     }
   }
 }
