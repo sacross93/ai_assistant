@@ -1,328 +1,328 @@
 'use client';
-import { useState, useEffect, useRef, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import SidebarHistory from '@/components/SidebarHistory';
-import ChatInterface from '@/components/ChatInterface';
-import SidebarTools from '@/components/SidebarTools';
-import AgentModal from '@/components/AgentModal';
-import MobileTabBar from '@/components/MobileTabBar';
-import { agents } from '@/data/agents';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 
-function HomeContent() {
-    // State
-    // NEW: Agents State
-    const [agents, setAgents] = useState([]);
-    const [isLoadingAgents, setIsLoadingAgents] = useState(true);
-
-    const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-    const [selectedAgentId, setSelectedAgentId] = useState(null);
-    const [modalAgentId, setModalAgentId] = useState(null);
-    const [uploadedFiles, setUploadedFiles] = useState([]);
-    const [uploadedUrls, setUploadedUrls] = useState([]);
-    const [currentConversationId, setCurrentConversationId] = useState(null);
-
-    // Mobile states
-    const [activeMobileTab, setActiveMobileTab] = useState('chat');
-    const [isMobile, setIsMobile] = useState(false);
-
-    // RAG Document States
-    const [ragDocuments, setRagDocuments] = useState([]);
-    const [selectedDocIds, setSelectedDocIds] = useState([]);
-    const [useAllDocs, setUseAllDocs] = useState(true);
-
+export default function LandingPage() {
     const router = useRouter();
-    const searchParams = useSearchParams();
+    const [isVisible, setIsVisible] = useState(false);
 
-    // Fetch Agents on Mount
     useEffect(() => {
-        const fetchAgents = async () => {
-            try {
-                const res = await fetch('/api/agents');
-                if (res.ok) {
-                    const data = await res.json();
-                    setAgents(data.agents || []);
-                }
-            } catch (error) {
-                console.error('Failed to fetch agents:', error);
-            } finally {
-                setIsLoadingAgents(false);
-            }
-        };
-        fetchAgents();
+        setIsVisible(true);
     }, []);
 
-    // Fetch RAG documents when doc-chat agent is selected
-    useEffect(() => {
-        if (selectedAgentId === 'doc-chat') {
-            fetchRagDocuments();
-        }
-    }, [selectedAgentId]);
+    const handleGetStarted = () => {
+        router.push('/chat');
+    };
 
-    const fetchRagDocuments = async () => {
-        try {
-            const res = await fetch('/api/doc-chat/docs');
-            if (res.ok) {
-                const data = await res.json();
-                setRagDocuments(data.documents || []);
-            }
-        } catch (error) {
-            console.error('Failed to fetch RAG documents:', error);
+    const scrollToSection = (sectionId) => {
+        const element = document.getElementById(sectionId);
+        if (element) {
+            element.scrollIntoView({ behavior: 'smooth' });
         }
     };
-
-    const handleToggleDocSelection = (docId) => {
-        setSelectedDocIds(prev => {
-            if (prev.includes(docId)) {
-                return prev.filter(id => id !== docId);
-            } else {
-                return [...prev, docId];
-            }
-        });
-        // 문서를 선택하면 전체 문서 모드 해제
-        setUseAllDocs(false);
-    };
-
-    const handleToggleAllDocs = () => {
-        setUseAllDocs(prev => !prev);
-        if (!useAllDocs) {
-            setSelectedDocIds([]); // 전체 문서 모드 시 개별 선택 해제
-        }
-    };
-
-    const handleDeleteRagDocument = async (docId) => {
-        try {
-            const res = await fetch(`/api/doc-chat/docs?doc_id=${docId}`, { method: 'DELETE' });
-            if (res.ok) {
-                setRagDocuments(prev => prev.filter(d => d.doc_id !== docId));
-                setSelectedDocIds(prev => prev.filter(id => id !== docId));
-            }
-        } catch (error) {
-            console.error('Failed to delete document:', error);
-        }
-    };
-
-    // Effect to toggle body class for history sidebar styling
-    useEffect(() => {
-        if (isHistoryOpen) {
-            document.body.classList.add('history-open');
-        } else {
-            document.body.classList.remove('history-open');
-        }
-    }, [isHistoryOpen]);
-
-    // Mobile detection effect
-    useEffect(() => {
-        const checkMobile = () => {
-            const mobile = window.innerWidth <= 768;
-            setIsMobile(mobile);
-
-            // Reset to chat tab when switching to desktop
-            if (!mobile && activeMobileTab !== 'chat') {
-                setActiveMobileTab('chat');
-            }
-        };
-
-        checkMobile();
-        window.addEventListener('resize', checkMobile);
-        return () => window.removeEventListener('resize', checkMobile);
-    }, [activeMobileTab]);
-
-    // Effect: Sync URL query param -> State
-    // 브라우저 새로고침이나 뒤로가기 시 URL에 있는 conversationId를 복구합니다.
-    // 주의: currentConversationId를 의존성에서 제거하여 무한 루프 방지
-    const prevParamIdRef = useRef(undefined); // undefined로 초기화하여 첫 실행 감지
-    const conversationIdFromUrl = searchParams.get('conversationId');
-
-    useEffect(() => {
-        // 실제 값이 변경되지 않았으면 무시
-        if (conversationIdFromUrl === prevParamIdRef.current) return;
-
-        // null → null 전환도 무시 (불필요한 상태 업데이트 방지)
-        if (conversationIdFromUrl === null && prevParamIdRef.current === null) return;
-
-        console.log(`[page.jsx] URL param changed: ${prevParamIdRef.current} → ${conversationIdFromUrl}`);
-        prevParamIdRef.current = conversationIdFromUrl;
-        setCurrentConversationId(conversationIdFromUrl || null);
-    }, [conversationIdFromUrl]);
-
-    // Handlers
-    const toggleHistory = () => {
-        if (isMobile) {
-            // Mobile: toggle between history and chat tabs
-            setActiveMobileTab(prev => prev === 'history' ? 'chat' : 'history');
-        } else {
-            // Desktop: toggle sidebar
-            setIsHistoryOpen(prev => !prev);
-        }
-    };
-
-    const handleSelectConversation = (convId) => {
-        // 이미 같은 대화면 무시 (불필요한 라우터 호출 방지)
-        if (String(convId) === String(currentConversationId)) return;
-        // 상태를 직접 변경하기보다 URL을 변경하여 위 useEffect가 처리하도록 함 (Single Source of Truth)
-        router.push(`/?conversationId=${convId}`);
-    };
-
-    const handleConversationChange = (newConvId) => {
-        // 이미 같은 대화면 무시
-        if (String(newConvId) === String(currentConversationId)) return;
-        // 새 대화가 생성되었을 때 URL을 업데이트 (replace로 히스토리 꼬임 방지)
-        router.replace(`/?conversationId=${newConvId}`);
-    };
-
-    const handleNewChat = () => {
-        // Clear current conversation ID first
-        setCurrentConversationId(null);
-
-        // Clear file attachments
-        setUploadedFiles([]);
-        setUploadedUrls([]);
-
-        // Navigate to root, removing conversationId param
-        router.push('/');
-        // 모바일 등에서 자동으로 사이드바 닫히는 동작은 SidebarHistory 내부에서 처리됨
-    };
-
-    const handleSelectAgent = (agentId) => {
-        setSelectedAgentId(prev => prev === agentId ? null : agentId);
-    };
-
-    const handleOpenModal = (agentId) => {
-        setModalAgentId(agentId);
-    };
-
-    const handleCloseModal = () => {
-        setModalAgentId(null);
-    };
-
-    const handleUseAgentFromModal = (agentId) => {
-        setSelectedAgentId(agentId);
-    };
-
-    const handleAddFiles = (newFiles) => {
-        setUploadedFiles(prev => [...prev, ...newFiles]);
-    };
-
-    const handleDeleteFile = (indexToRemove) => {
-        setUploadedFiles(prev => prev.filter((_, index) => index !== indexToRemove));
-    };
-
-    const handleAddUrl = (newUrl) => {
-        setUploadedUrls(prev => [...prev, newUrl]);
-    };
-
-    const handleDeleteUrl = (indexToRemove) => {
-        setUploadedUrls(prev => prev.filter((_, index) => index !== indexToRemove));
-    };
-
-    const handleClearAttachments = () => {
-        setUploadedFiles([]);
-        setUploadedUrls([]);
-    };
-
-    const handleLogout = async () => {
-        await fetch('/api/auth/logout', { method: 'POST' });
-        router.push('/login');
-        router.refresh();
-    }
-
-    // Derived State
-    const selectedAgent = agents.find(a => a.id === selectedAgentId);
-    const modalAgent = agents.find(a => a.id === modalAgentId);
-
-    if (isLoadingAgents) return <div className="loading-screen">Loading...</div>;
 
     return (
-        <>
-            <div className={`app-container ${isMobile ? 'mobile-mode' : ''}`}>
-                {/* Left Sidebar - Desktop or Mobile history tab */}
-                {(!isMobile || activeMobileTab === 'history') && (
-                    <SidebarHistory
-                        isOpen={isMobile ? true : isHistoryOpen}
-                        onClose={() => isMobile ? setActiveMobileTab('chat') : setIsHistoryOpen(false)}
-                        onSelectConversation={handleSelectConversation}
-                        onNewChat={handleNewChat}
-                        isMobile={isMobile}
-                    />
-                )}
+        <div className="landing-page">
+            {/* Navigation */}
+            <nav className="landing-nav">
+                <div className="landing-nav-container">
+                    <div className="landing-logo">
+                        <Image
+                            src="/images/landing/logo-white.png"
+                            alt="AI Secretary"
+                            width={180}
+                            height={40}
+                            priority
+                            unoptimized
+                        />
+                    </div>
+                    <div className="landing-nav-links">
+                        <button onClick={() => scrollToSection('features')} className="landing-nav-link">
+                            기능 소개
+                        </button>
+                        <button onClick={() => scrollToSection('agents')} className="landing-nav-link">
+                            AI 에이전트
+                        </button>
+                        <button onClick={handleGetStarted} className="landing-nav-cta">
+                            시작하기
+                        </button>
+                    </div>
+                </div>
+            </nav>
 
-                {/* History Toggle Button - Desktop only */}
-                {!isMobile && (
-                    <button
-                        className="history-toggle-btn"
-                        id="historyToggleBtn"
-                        onClick={toggleHistory}
+            {/* Hero Section */}
+            <section className={`landing-hero ${isVisible ? 'visible' : ''}`}>
+                {/* 배경 영상 */}
+                <div className="landing-hero-video-wrapper">
+                    <video
+                        className="landing-hero-video"
+                        autoPlay
+                        muted
+                        loop
+                        playsInline
                     >
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M12 8V16M8 12H16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                        </svg>
-                        <span>기록</span>
+                        <source src="/images/landing/landing.mp4" type="video/mp4" />
+                    </video>
+                    <div className="landing-hero-video-overlay"></div>
+                </div>
+
+                <div className="landing-hero-content">
+                    <div className="landing-hero-badge">AI 기반 업무 혁신</div>
+                    <h1 className="landing-hero-title">
+                        <span className="gradient-text">우리 회사의</span>
+                        <br />
+                        <span className="gradient-text">AI 비서가 왔습니다</span>
+                    </h1>
+                    <p className="landing-hero-subtitle">
+                        번역 앱, 요약 앱, 문서 앱...
+                        <br />
+                        더 이상 여러 도구를 오갈 필요 없습니다.
+                        <br /><br />
+                        AI Secretary 하나로 모든 업무를 한 곳에서 해결하세요.
+                    </p>
+                    <div className="landing-hero-buttons">
+                        <button onClick={handleGetStarted} className="landing-btn-primary">
+                            지금 시작하기
+                        </button>
+                        <button onClick={() => scrollToSection('features')} className="landing-btn-secondary">
+                            더 알아보기
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            {/* Features Section */}
+            <section id="features" className="landing-features">
+                <div className="landing-section-header">
+                    <h2>주요 기능</h2>
+                    <p>AI가 업무의 모든 영역을 지원합니다</p>
+                </div>
+
+                <div className="landing-feature-row">
+                    <div className="landing-feature-image">
+                        <Image
+                            src="/images/landing/feature-1.png"
+                            alt="AI 문서 드라이브"
+                            width={600}
+                            height={400}
+                            className="feature-screenshot"
+                            unoptimized
+                        />
+                    </div>
+                    <div className="landing-feature-content">
+                        <div className="feature-badge">AI 문서 드라이브</div>
+                        <h3>AI로 관리·생성·활용하는<br />지능형 조직 문서 플랫폼</h3>
+                        <ul className="feature-list">
+                            <li>
+                                <strong>업로드 문서 기반 AI 답변 (RAG)</strong>
+                                <span>사내 규정, 매뉴얼을 업로드하면 AI가 즉시 답변합니다</span>
+                            </li>
+                            <li>
+                                <strong>AI 문서 생성</strong>
+                                <span>보고서, 기획서를 AI가 초안부터 작성해 드립니다</span>
+                            </li>
+                            <li>
+                                <strong>조직·팀별 문서 관리</strong>
+                                <span>팀별 권한 설정으로 안전하게 문서를 관리하세요</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div className="landing-feature-row reverse">
+                    <div className="landing-feature-content">
+                        <div className="feature-badge">AI 에이전트 허브</div>
+                        <h3>직무별·상황별 AI 에이전트로<br />업무 실행을 더 빠르게</h3>
+                        <ul className="feature-list">
+                            <li>
+                                <strong>사용자 맞춤 에이전트 생성</strong>
+                                <span>나만의 업무 패턴에 맞는 AI를 직접 만드세요</span>
+                            </li>
+                            <li>
+                                <strong>직무별 에이전트 제공</strong>
+                                <span>마케팅, 개발, 인사 등 직무에 최적화된 AI 제공</span>
+                            </li>
+                            <li>
+                                <strong>STT 통합 요약 기능</strong>
+                                <span>회의 녹음, 영상 URL만 넣으면 자동 요약</span>
+                            </li>
+                        </ul>
+                    </div>
+                    <div className="landing-feature-image">
+                        <Image
+                            src="/images/landing/feature-2.png"
+                            alt="AI 에이전트 허브"
+                            width={600}
+                            height={400}
+                            className="feature-screenshot"
+                            unoptimized
+                        />
+                    </div>
+                </div>
+            </section>
+
+            {/* Why AI Secretary Section */}
+            <section className="landing-why">
+                <div className="landing-section-header">
+                    <h2>왜 AI Secretary인가요?</h2>
+                    <p>기존 방식과 비교해보세요</p>
+                </div>
+
+                <div className="landing-comparison">
+                    <div className="comparison-card old">
+                        <h3>기존 방식</h3>
+                        <ul>
+                            <li>번역은 A앱, 요약은 B앱, 문서는 C앱...</li>
+                            <li>매번 "이건 번역해줘" 설명 필요</li>
+                            <li>도구마다 다른 사용법 학습</li>
+                            <li>데이터가 여러 곳에 흩어짐</li>
+                        </ul>
+                    </div>
+
+                    <div className="comparison-card new">
+                        <h3>AI Secretary</h3>
+                        <ul>
+                            <li>All-in-One: 한 곳에서 모든 업무</li>
+                            <li>에이전트가 알아서 작업 수행</li>
+                            <li>직관적인 통합 인터페이스</li>
+                            <li>모든 데이터를 안전하게 한 곳에서</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            {/* Agents Section */}
+            <section id="agents" className="landing-agents">
+                <div className="landing-section-header">
+                    <h2>다양한 AI 에이전트</h2>
+                    <p>업무에 맞는 전문 AI를 만나보세요</p>
+                </div>
+
+                <div className="landing-agents-grid">
+                    <div className="landing-agent-card">
+                        <div className="agent-card-image">
+                            <Image
+                                src="/images/landing/feature-3.png"
+                                alt="사내 문서 기반 챗봇"
+                                width={400}
+                                height={250}
+                                unoptimized
+                            />
+                        </div>
+                        <div className="agent-card-content">
+                            <h4>사내 문서 기반 챗봇</h4>
+                            <p>신입사원 온보딩부터 사내 규정 문의까지, 문서를 뒤질 필요 없이 AI에게 물어보세요. 업로드된 자료를 기반으로 정확하게 답변합니다.</p>
+                        </div>
+                    </div>
+
+                    <div className="landing-agent-card">
+                        <div className="agent-card-image">
+                            <Image
+                                src="/images/landing/feature-4.png"
+                                alt="STT 통합 요약"
+                                width={400}
+                                height={250}
+                                unoptimized
+                            />
+                        </div>
+                        <div className="agent-card-content">
+                            <h4>STT 통합 요약</h4>
+                            <p>1시간 회의 녹화, 유튜브 강의, 웨비나 영상도 URL 하나로 핵심만 추출해 요약합니다. 바쁜 당신을 위한 시간 절약 도구.</p>
+                        </div>
+                    </div>
+
+                    <div className="landing-agent-card">
+                        <div className="agent-card-image">
+                            <Image
+                                src="/images/landing/feature-5.png"
+                                alt="번역"
+                                width={400}
+                                height={250}
+                                unoptimized
+                            />
+                        </div>
+                        <div className="agent-card-content">
+                            <h4>번역</h4>
+                            <p>영어, 일본어, 중국어 등 다국어 문서를 자연스러운 문장으로 번역합니다. 비즈니스 문서에 최적화된 번역 품질.</p>
+                        </div>
+                    </div>
+
+                    <div className="landing-agent-card">
+                        <div className="agent-card-image">
+                            <Image
+                                src="/images/landing/feature-6.png"
+                                alt="맞춤법 교정"
+                                width={400}
+                                height={250}
+                                unoptimized
+                            />
+                        </div>
+                        <div className="agent-card-content">
+                            <h4>맞춤법 교정</h4>
+                            <p>오타, 맞춤법, 어색한 표현까지 AI가 꼼꼼하게 검토하고 수정 제안합니다. 중요한 문서, 자신있게 보내세요.</p>
+                        </div>
+                    </div>
+
+                    <div className="landing-agent-card">
+                        <div className="agent-card-image">
+                            <Image
+                                src="/images/landing/feature-7.png"
+                                alt="보고서 작성"
+                                width={400}
+                                height={250}
+                                unoptimized
+                            />
+                        </div>
+                        <div className="agent-card-content">
+                            <h4>보고서 작성</h4>
+                            <p>주간 보고서, 프로젝트 제안서, 회의 결과 정리까지. 반복되는 문서 작성은 AI에게 맡기세요. 주제만 입력하면 깔끔한 초안이 완성됩니다.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            {/* CTA Section */}
+            <section className="landing-cta">
+                <div className="landing-cta-content">
+                    <h2>여러 도구 사이를 오가는 시간, 이제 그만</h2>
+                    <p>AI Secretary 하나로 모든 업무를 시작하세요</p>
+                    <button onClick={handleGetStarted} className="landing-cta-button">
+                        시작하기
                     </button>
-                )}
+                </div>
+            </section>
 
-                {/* Main Content - Desktop or Mobile chat tab */}
-                {(!isMobile || activeMobileTab === 'chat') && (
-                    <ChatInterface
-                        agents={agents}
-                        selectedAgentName={selectedAgent ? selectedAgent.name : null}
-                        selectedAgentId={selectedAgentId}
-                        uploadedUrls={uploadedUrls}
-                        uploadedFiles={uploadedFiles}
-                        onAddFiles={handleAddFiles}
-                        onDeleteFile={handleDeleteFile}
-                        onAddUrl={handleAddUrl}
-                        onDeleteUrl={handleDeleteUrl}
-                        onClearAttachments={handleClearAttachments}
-                        currentConversationId={currentConversationId}
-                        onConversationChange={handleConversationChange}
-                        selectedDocIds={selectedDocIds}
-                        useAllDocs={useAllDocs}
-                        onDocumentUploaded={fetchRagDocuments}
-                        isMobile={isMobile}
-                    />
-                )}
-
-                {/* Right Sidebar - Desktop or Mobile tools tab */}
-                {(!isMobile || activeMobileTab === 'tools') && (
-                    <SidebarTools
-                        agents={agents}
-                        selectedAgentId={selectedAgentId}
-                        onSelectAgent={handleSelectAgent}
-                        onOpenModal={handleOpenModal}
-                        onLogout={handleLogout}
-                        ragDocuments={ragDocuments}
-                        selectedDocIds={selectedDocIds}
-                        useAllDocs={useAllDocs}
-                        onToggleDocSelection={handleToggleDocSelection}
-                        onToggleAllDocs={handleToggleAllDocs}
-                        onDeleteDocument={handleDeleteRagDocument}
-                        isMobile={isMobile}
-                    />
-                )}
-            </div>
-
-            {/* Mobile Tab Bar - Mobile only */}
-            {isMobile && (
-                <MobileTabBar
-                    activeTab={activeMobileTab}
-                    onTabChange={setActiveMobileTab}
-                />
-            )}
-
-            {/* Modal */}
-            <AgentModal
-                agent={modalAgent || null}
-                onClose={handleCloseModal}
-                onUseAgent={handleUseAgentFromModal}
-            />
-        </>
-    );
-}
-
-export default function Home() {
-    return (
-        <Suspense fallback={<div className="flex items-center justify-center h-screen">Loading...</div>}>
-            <HomeContent />
-        </Suspense>
+            {/* Footer */}
+            <footer className="landing-footer">
+                <div className="landing-footer-content">
+                    <div className="landing-footer-logo">
+                        <Image
+                            src="/images/landing/logo-white.png"
+                            alt="AI Secretary"
+                            width={150}
+                            height={35}
+                            unoptimized
+                        />
+                    </div>
+                    <div className="landing-footer-info">
+                        <div className="landing-footer-contact">
+                            <h4>Contact</h4>
+                            <p>AI 연구소</p>
+                            <p>02-6715-2161</p>
+                            <p>ai@jch.kr</p>
+                        </div>
+                        <div className="landing-footer-company">
+                            <h4>Company</h4>
+                            <p>제이씨현시스템(주)</p>
+                            <p>서울 용산구 신계동 6-1</p>
+                        </div>
+                    </div>
+                    <p className="landing-footer-copyright">
+                        © 2026 JCHyun System. All rights reserved.
+                    </p>
+                </div>
+            </footer>
+        </div>
     );
 }

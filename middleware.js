@@ -22,12 +22,12 @@ export async function middleware(request) {
     }
 
     const isAuth = !!payload;
-    const isPublicPath = path === '/login' || path === '/signup';
+    const isPublicPath = path === '/' || path === '/login' || path === '/signup';
     const isAdminPath = path.startsWith('/admin');
 
-    // If trying to access public path while logged in -> redirect to home
-    if (isPublicPath && isAuth) {
-        return NextResponse.redirect(new URL('/', request.url));
+    // If trying to access public path while logged in -> redirect to chat (not landing)
+    if (isPublicPath && isAuth && path !== '/') {
+        return NextResponse.redirect(new URL('/chat', request.url));
     }
 
     // If trying to access protected path while logged out -> redirect to login
@@ -51,7 +51,8 @@ export const config = {
          * - _next/static (static files)
          * - _next/image (image optimization files)
          * - favicon.ico (favicon file)
+         * - images (public static images)
          */
-        '/((?!api|_next/static|_next/image|favicon.ico).*)',
+        '/((?!api|_next/static|_next/image|favicon.ico|images).*)',
     ],
 };

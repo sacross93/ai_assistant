@@ -1348,8 +1348,9 @@ const ChatInterface = ({
 
                 .attach-menu {
                     position: absolute;
-                    bottom: 40px;
+                    bottom: 100%;
                     left: 0;
+                    margin-bottom: 8px;
                     background: white;
                     border-radius: 12px;
                     box-shadow: 0 4px 20px rgba(0,0,0,0.15);
@@ -1639,12 +1640,21 @@ const ChatInterface = ({
                     }
 
                     /* 모바일에서 메시지 너비 최대한 활용 */
+                    .message {
+                        max-width: 100% !important;
+                    }
+
                     .message-content-wrapper {
                         max-width: 95% !important;
                     }
 
                     .message-content-wrapper.report-wrapper {
                         max-width: 98% !important;
+                    }
+
+                    /* 보고서 버블 패딩 모바일 최적화 */
+                    .message.assistant .message-bubble.report-bubble {
+                        padding: 16px !important;
                     }
 
                     .input-area {
@@ -1675,9 +1685,10 @@ const ChatInterface = ({
                         padding: 0;
                     }
 
-                    /* 첨부 메뉴 위치 조정 */
+                    /* 첨부 메뉴 위치 조정 - 부모 요소 바로 위에 배치 */
                     .attach-menu {
-                        bottom: calc(120px + env(safe-area-inset-bottom)) !important;
+                        bottom: 100% !important;
+                        margin-bottom: 8px;
                     }
 
                     .welcome-message {
