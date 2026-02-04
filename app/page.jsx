@@ -68,18 +68,17 @@ export default function LandingPage() {
                 </div>
 
                 <div className="landing-hero-content">
-                    <div className="landing-hero-badge">AI 기반 업무 혁신</div>
+                    <div className="landing-hero-badge">On-Premise & Custom AI</div>
                     <h1 className="landing-hero-title">
                         <span className="gradient-text">우리 회사의</span>
                         <br />
                         <span className="gradient-text">AI 비서가 왔습니다</span>
                     </h1>
                     <p className="landing-hero-subtitle">
-                        번역 앱, 요약 앱, 문서 앱...
-                        <br />
-                        더 이상 여러 도구를 오갈 필요 없습니다.
+                        번역, 요약, 문서 작성... 더 이상 여러 도구를 오갈 필요 없습니다.
                         <br /><br />
-                        AI Secretary 하나로 모든 업무를 한 곳에서 해결하세요.
+                        <strong>사내 데이터 유출 걱정 없이</strong>,<br />
+                        우리 회사만의 <strong>맞춤형 AI 비서</strong>를 구축하세요.
                     </p>
                     <div className="landing-hero-buttons">
                         <button onClick={handleGetStarted} className="landing-btn-primary">
@@ -156,6 +155,73 @@ export default function LandingPage() {
                             width={600}
                             height={400}
                             className="feature-screenshot"
+                            unoptimized
+                        />
+                    </div>
+                </div>
+
+                <div className="landing-feature-row">
+                    <div className="landing-feature-image">
+                        <Image
+                            src="/images/landing/feature-custom.png"
+                            alt="기업 맞춤형 커스텀"
+                            width={600}
+                            height={400}
+                            className="feature-screenshot"
+                            unoptimized
+                        />
+                    </div>
+                    <div className="landing-feature-content">
+                        <div className="feature-badge">기업 맞춤형 기능</div>
+                        <h3>우리 회사 업무 룰에 딱 맞춘<br />커스텀 AI 에이전트</h3>
+                        <ul className="feature-list">
+                            <li>
+                                <strong>사내 문서 완전 학습</strong>
+                                <span>회사 규정, 매뉴얼을 학습해 우리 회사만의 정답을 제공합니다</span>
+                            </li>
+                            <li>
+                                <strong>에이전트 설명 커스터마이징</strong>
+                                <span>임직원들이 이해하기 쉬운 사내 용어로 에이전트를 설명하세요</span>
+                            </li>
+                            <li>
+                                <strong>팀 전용 챗봇 생성</strong>
+                                <span>영업팀, 인사팀 등 각 조직에 특화된 전용 챗봇을 만드세요</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            {/* Security Section */}
+            <section className="landing-security">
+                <div className="landing-security-container">
+                    <div className="landing-security-content">
+                        <div className="security-badge">On-Premise Security</div>
+                        <h2>데이터 유출 걱정 없는<br />완벽한 온프레미스 보안</h2>
+                        <p>
+                            클라우드로 전송되지 않습니다. <br />
+                            모든 데이터와 AI 모델이 귀사의 사내 서버 안에서만 작동합니다.
+                        </p>
+                        <div className="security-points">
+                            <div className="security-point">
+                                <div className="security-icon">🔒</div>
+                                <h4>데이터 주권 보장</h4>
+                                <p>모든 대화 기록과 문서는 외부 서버가 아닌 사내 서버에 안전하게 저장됩니다.</p>
+                            </div>
+                            <div className="security-point">
+                                <div className="security-icon">🛡️</div>
+                                <h4>외부 유출 0%</h4>
+                                <p>인터넷이 차단된 폐쇄망 환경에서도 완벽하게 구축 및 동작 가능합니다.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="landing-security-image">
+                        <Image
+                            src="/images/landing/feature-security.png"
+                            alt="온프레미스 보안"
+                            width={500}
+                            height={500}
+                            className="security-illustration"
                             unoptimized
                         />
                     </div>
