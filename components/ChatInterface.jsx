@@ -20,6 +20,8 @@ const getLoadingInfo = (id) => {
             return { emoji: '🔍', text: '관련 문서를 확인하고 답변을 생성 중입니다' };
         case 'stt-summary':
             return { emoji: '🎙️', text: '영상을 분석하고 있습니다' };
+        case 'ocr':
+            return { emoji: '📋', text: 'OCR 텍스트를 추출하고 있습니다' };
         default:
             return { emoji: '⚙️', text: '요청을 처리하고 있습니다' };
     }
@@ -96,9 +98,13 @@ const ChatInterface = ({
     const getPlaceholderText = () => {
         // 데스크톱: 기존 로직 유지
         if (!isMobile) {
-            return selectedAgentId === 'stt-summary'
-                ? "URL을 추가하거나 메시지를 입력하세요..."
-                : "메시지를 입력하세요...";
+            if (selectedAgentId === 'stt-summary') {
+                return "URL을 추가하거나 메시지를 입력하세요...";
+            }
+            if (selectedAgentId === 'ocr') {
+                return "이미지 또는 PDF 파일을 업로드하세요...";
+            }
+            return "메시지를 입력하세요...";
         }
 
         // 모바일: Agent 정보 포함
@@ -227,6 +233,12 @@ const ChatInterface = ({
     const [sttConfig, setSttConfig] = useState({
         diarize: true,
         make_summary: true
+    });
+
+    // OCR Options
+    const [ocrConfig, setOcrConfig] = useState({
+        mode: 'markdown',
+        max_pages: ''
     });
 
     const scrollToBottom = () => {
@@ -545,6 +557,51 @@ const ChatInterface = ({
                     conversation_id: data.conversationId
                 }]);
 
+            } else if (selectedAgentId === 'ocr') {
+                // OCR: 파일 업로드 필수
+                if (!uploadedFiles || uploadedFiles.length === 0) {
+                    setMessages(prev => [...prev, {
+                        role: 'system',
+                        content: 'OCR 텍스트 추출을 위해 이미지 또는 PDF 파일을 업로드해주세요.'
+                    }]);
+                    setIsLoading(false);
+                    return;
+                }
+
+                const formData = new FormData();
+                uploadedFiles.forEach(file => {
+                    formData.append('files', file);
+                });
+                formData.append('mode', ocrConfig.mode);
+                if (ocrConfig.max_pages) {
+                    formData.append('max_pages', ocrConfig.max_pages);
+                }
+                formData.append('dpi', '150');
+                if (conversationId) formData.append('conversationId', conversationId);
+
+                const response = await fetch('/api/ocr', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                if (!response.ok) throw new Error('OCR API failed');
+                const data = await response.json();
+
+                // Update conversation ID if newly created
+                if (data.conversationId && data.conversationId !== conversationId) {
+                    setConversationId(data.conversationId);
+                    if (onConversationChange) onConversationChange(data.conversationId);
+                }
+
+                const ocrDisplayContent = data.result || 'OCR 처리 결과가 없습니다.';
+
+                setMessages(prev => [...prev, {
+                    role: 'assistant',
+                    content: ocrDisplayContent,
+                    agent_id: selectedAgentId,
+                    conversation_id: data.conversationId
+                }]);
+
             } else if (selectedAgentId === 'doc-chat') {
                 // doc-chat: 파일 업로드 또는 질문 처리
 
@@ -761,7 +818,7 @@ const ChatInterface = ({
                         }}
                     >
                         {messages.map((msg, idx) => {
-                            const isReport = msg.role === 'assistant' && (msg.agent_id === 'report-gen' || msg.agent_id === 'doc-chat' || (typeof msg.content === 'string' && (msg.content.startsWith('#') || msg.content.includes('**'))));
+                            const isReport = msg.role === 'assistant' && (msg.agent_id === 'report-gen' || msg.agent_id === 'doc-chat' || msg.agent_id === 'ocr' || (typeof msg.content === 'string' && (msg.content.startsWith('#') || msg.content.includes('**'))));
 
                             return (
                                 <div key={idx} className={`message ${msg.role}`}>
@@ -903,6 +960,48 @@ const ChatInterface = ({
                         </div>
                     )}
 
+                    {selectedAgentId === 'ocr' && (
+                        <div className="stt-options">
+                            <label className="checkbox-container" style={{ gap: '6px' }}>
+                                <span style={{ fontSize: '13px', fontWeight: 500 }}>출력 형식:</span>
+                                <select
+                                    value={ocrConfig.mode}
+                                    onChange={(e) => setOcrConfig({ ...ocrConfig, mode: e.target.value })}
+                                    style={{
+                                        border: '1px solid #e1e1e6',
+                                        borderRadius: '8px',
+                                        padding: '4px 8px',
+                                        fontSize: '13px',
+                                        background: 'white',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    <option value="markdown">Markdown</option>
+                                    <option value="json">JSON</option>
+                                </select>
+                            </label>
+                            <label className="checkbox-container" style={{ gap: '6px' }}>
+                                <span style={{ fontSize: '13px', fontWeight: 500 }}>최대 페이지:</span>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="100"
+                                    placeholder="전체"
+                                    value={ocrConfig.max_pages}
+                                    onChange={(e) => setOcrConfig({ ...ocrConfig, max_pages: e.target.value })}
+                                    style={{
+                                        width: '60px',
+                                        border: '1px solid #e1e1e6',
+                                        borderRadius: '8px',
+                                        padding: '4px 8px',
+                                        fontSize: '13px',
+                                        background: 'white'
+                                    }}
+                                />
+                            </label>
+                        </div>
+                    )}
+
                     {/* URL Input Area (Inline) - Moved outside input-wrapper */}
                     {showUrlInput && (
                         <div className="url-input-inline">
@@ -982,6 +1081,7 @@ const ChatInterface = ({
                                     hidden
                                     ref={fileInputRef}
                                     multiple
+                                    accept={selectedAgentId === 'ocr' ? 'image/*,.pdf' : undefined}
                                     onChange={(e) => {
                                         if (e.target.files?.length > 0) {
                                             onAddFiles(Array.from(e.target.files));
