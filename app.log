@@ -1,0 +1,44 @@
+nohup: ignoring input
+
+> temp_react@0.0.0 start
+> next start -H 0.0.0.0 --port 17999
+
+▲ Next.js 16.1.1
+- Local:         http://localhost:17999
+- Network:       http://0.0.0.0:17999
+
+✓ Starting...
+✓ Ready in 117ms
+Spell Check Request Received:
+- Agent: spellcheck
+- Input Length: 18
+Spell Check API Error: 500 {"detail":"요청 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."}
+Spell Check Request Received:
+- Agent: spellcheck
+- Input Length: 19
+Spell Check API Error: 500 {"detail":"요청 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."}
+Spell Check Request Received:
+- Agent: spellcheck
+- Input Length: 18
+Spell Check API Error: 500 {"detail":"요청 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."}
+Spell Check Request Received:
+- Agent: spellcheck
+- Input Length: 19
+Spell Check API Error: 404 {"detail":"Not Found"}
+Report Generation Request Received:
+- Agent: report-gen
+- Input: 얼른 퇴근하고 운동이나 가고싶다. 
+
+- Conversation ID: 272
+Sending Report Request (FormData): { fmt: 'md', text_len: 20, prev_context_len: 2 }
+Report API Error: 500 {"detail":"문서 생성 실패: Tokenizer class TokenizersBackend does not exist or is not currently imported.\n\nTraceback (most recent call last):\n  File \"/usr/llm/ai-playground/auto/report/report_doc_core.py\", line 680, in _ensure_backend\n    _TOK = AutoTokenizer.from_pretrained(\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/ai/miniconda3/envs/welfare_guide/lib/python3.11/site-packages/transformers/models/auto/tokenization_auto.py\", line 1153, in from_pretrained\n    raise ValueError(\nValueError: Tokenizer class TokenizersBackend does not exist or is not currently imported.\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/usr/llm/ai-playground/auto/report/report_subapp.py\", line 684, in report_worker\n    content = compose_document(\n              ^^^^^^^^^^^^^^^^^\n  File \"/usr/llm/ai-playground/auto/report/report_doc_core.py\", line 878, in compose_document\n    tok, mdl = _ensure_backend(cfg)\n               ^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/llm/ai-playground/auto/report/report_doc_core.py\", line 686, in _ensure_backend\n    _TOK = AutoTokenizer.from_pretrained(\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/ai/miniconda3/envs/welfare_guide/lib/python3.11/site-packages/transformers/models/auto/tokenization_auto.py\", line 1153, in from_pretrained\n    raise ValueError(\nValueError: Tokenizer class TokenizersBackend does not exist or is not currently imported.\n"}
+Spell Check Request Received:
+- Agent: spellcheck
+- Input Length: 20
+Spell Check API Error: 404 {"detail":"Not Found"}
+Spell Check Request Received:
+- Agent: spellcheck
+- Input Length: 20
+Spell Check Request Received:
+- Agent: spellcheck
+- Input Length: 374

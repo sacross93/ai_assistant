@@ -15,6 +15,10 @@ export default function LandingPage() {
         router.push('/chat');
     };
 
+    const handlePurchase = () => {
+        window.open('https://serverplace.co.kr/product/ai%EC%86%94%EB%A3%A8%EC%85%98-%EC%9A%B0%EB%A6%AC-%ED%9A%8C%EC%82%AC-%EC%96%B4%EC%8B%9C%EC%8A%A4%ED%84%B4%ED%8A%B8-%ED%8C%A8%ED%82%A4%EC%A7%80-ai%EB%B9%84%EC%84%9C-%EC%86%94%EB%A3%A8%EC%85%98/72/category/57/display/1/', '_blank');
+    };
+
     const scrollToSection = (sectionId) => {
         const element = document.getElementById(sectionId);
         if (element) {
@@ -43,6 +47,9 @@ export default function LandingPage() {
                         </button>
                         <button onClick={() => scrollToSection('agents')} className="landing-nav-link">
                             AI 에이전트
+                        </button>
+                        <button onClick={handlePurchase} className="landing-nav-purchase">
+                            도입하기
                         </button>
                         <button onClick={handleGetStarted} className="landing-nav-cta">
                             시작하기
@@ -353,9 +360,14 @@ export default function LandingPage() {
                 <div className="landing-cta-content">
                     <h2>여러 도구 사이를 오가는 시간, 이제 그만</h2>
                     <p>AI Secretary 하나로 모든 업무를 시작하세요</p>
-                    <button onClick={handleGetStarted} className="landing-cta-button">
-                        시작하기
-                    </button>
+                    <div className="landing-cta-buttons">
+                        <button onClick={handleGetStarted} className="landing-cta-button">
+                            시작하기
+                        </button>
+                        <button onClick={handlePurchase} className="landing-cta-button-outline">
+                            도입하기
+                        </button>
+                    </div>
                 </div>
             </section>
 

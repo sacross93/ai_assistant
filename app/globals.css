@@ -803,6 +803,26 @@ textarea {
   color: #ffffff;
 }
 
+
+.landing-nav-purchase {
+  background: linear-gradient(135deg, #3182f6 0%, #6366f1 100%);
+  color: #ffffff;
+  border: none;
+  padding: 10px 24px;
+  border-radius: 24px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 12px rgba(49, 130, 246, 0.3);
+  margin-right: 12px;
+}
+
+.landing-nav-purchase:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(49, 130, 246, 0.4);
+}
+
 .landing-nav-cta {
   background: #ffffff;
   color: var(--primary-blue);
@@ -1505,5 +1525,42 @@ textarea {
   .security-points {
     flex-direction: column;
     gap: 16px;
+  }
+}
+
+/* Landing CTA Buttons */
+.landing-cta-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 40px;
+}
+
+.landing-cta-content p {
+  margin-bottom: 0;
+}
+
+.landing-cta-button-outline {
+  background: white;
+  color: var(--primary-blue);
+  border: 2px solid var(--primary-blue);
+  padding: 18px 48px;
+  border-radius: 16px;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.landing-cta-button-outline:hover {
+  background: #f0f7ff;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(49, 130, 246, 0.2);
+}
+
+@media (max-width: 768px) {
+  .landing-cta-buttons {
+    flex-direction: column;
+    gap: 12px;
   }
 }

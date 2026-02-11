@@ -1,31 +1,55 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import FeaturesEditModal from '@/components/FeaturesEditModal';
+import SlideOver from '@/components/SlideOver';
+import AgentEditForm from '@/components/AgentEditForm';
+import SortableAgentRow from '@/components/SortableAgentRow';
+
+// DnD Imports
+import {
+    DndContext,
+    closestCenter,
+    KeyboardSensor,
+    PointerSensor,
+    useSensor,
+    useSensors,
+} from '@dnd-kit/core';
+import {
+    arrayMove,
+    SortableContext,
+    sortableKeyboardCoordinates,
+    verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
 
 export default function AdminPage() {
     const [users, setUsers] = useState([]);
-    const [agents, setAgents] = useState([]); // NEW: Agents State
+    const [agents, setAgents] = useState([]);
     const [loading, setLoading] = useState(true);
     const router = useRouter();
+
+    // DnD Sensors
+    const sensors = useSensors(
+        useSensor(PointerSensor),
+        useSensor(KeyboardSensor, {
+            coordinateGetter: sortableKeyboardCoordinates,
+        })
+    );
+
+    // User Action Modal
     const [confirmModal, setConfirmModal] = useState({
         isOpen: false,
         type: null,
         userId: null,
         message: ''
     });
-    const [editingCell, setEditingCell] = useState(null); // { agentId, field }
-    const [tempValues, setTempValues] = useState({}); // { [agentId]: { name, description } }
-    const [featuresModal, setFeaturesModal] = useState({
-        isOpen: false,
-        agentId: null,
-        agentName: '',
-        features: []
-    });
+
+    // Agent Edit State
+    const [isSlideOverOpen, setIsSlideOverOpen] = useState(false);
+    const [selectedAgent, setSelectedAgent] = useState(null);
 
     useEffect(() => {
         fetchUsers();
-        fetchAgents(); // NEW: Fetch Agents
+        fetchAgents();
     }, []);
 
     const fetchUsers = async () => {
@@ -44,7 +68,6 @@ export default function AdminPage() {
         }
     };
 
-    // NEW: Fetch Agents
     const fetchAgents = async () => {
         try {
             const res = await fetch('/api/admin/agents');
@@ -57,35 +80,28 @@ export default function AdminPage() {
         }
     };
 
-    // NEW: Handle Move Up
-    const moveAgentUp = async (index) => {
-        if (index === 0) return;
-        const newAgents = [...agents];
-        // Swap
-        [newAgents[index - 1], newAgents[index]] = [newAgents[index], newAgents[index - 1]];
-        // Update indices locally
-        newAgents.forEach((agent, i) => agent.order_index = i);
-        setAgents(newAgents);
+    // --- Agent Reordering (Drag End) ---
+    const handleDragEnd = async (event) => {
+        const { active, over } = event;
 
-        // Save to DB
-        await saveAgentOrder(newAgents);
+        if (active.id !== over.id) {
+            setAgents((items) => {
+                const oldIndex = items.findIndex(item => item.id === active.id);
+                const newIndex = items.findIndex(item => item.id === over.id);
+
+                const newAgents = arrayMove(items, oldIndex, newIndex);
+
+                // Update indices
+                newAgents.forEach((agent, i) => agent.order_index = i);
+
+                // Save to DB
+                saveAgentOrder(newAgents);
+
+                return newAgents;
+            });
+        }
     };
 
-    // NEW: Handle Move Down
-    const moveAgentDown = async (index) => {
-        if (index === agents.length - 1) return;
-        const newAgents = [...agents];
-        // Swap
-        [newAgents[index + 1], newAgents[index]] = [newAgents[index], newAgents[index + 1]];
-        // Update indices locally
-        newAgents.forEach((agent, i) => agent.order_index = i);
-        setAgents(newAgents);
-
-        // Save to DB
-        await saveAgentOrder(newAgents);
-    };
-
-    // NEW: Save Order to DB
     const saveAgentOrder = async (updatedAgents) => {
         try {
             await fetch('/api/admin/agents/reorder', {
@@ -96,134 +112,55 @@ export default function AdminPage() {
         } catch (error) {
             console.error('Failed to save order:', error);
             alert('순서 저장 실패');
-            fetchAgents(); // Revert
-        }
-    };
-
-    // NEW: Toggle Visibility
-    const toggleAgentVisibility = async (agentId, currentStatus) => {
-        const newStatus = !currentStatus;
-        // Optimistic Update
-        setAgents(agents.map(a => a.id === agentId ? { ...a, is_active: newStatus ? 1 : 0 } : a));
-
-        try {
-            const res = await fetch('/api/admin/agents/toggle', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ agentId, isActive: newStatus })
-            });
-            if (!res.ok) throw new Error('Failed');
-        } catch (error) {
-            console.error('Failed to toggle visibility:', error);
-            alert('상태 변경 실패');
-            fetchAgents(); // Revert
-        }
-    };
-
-    // NEW: Start editing a cell
-    const handleStartEdit = (agentId, field, currentValue) => {
-        setEditingCell({ agentId, field });
-        const agent = agents.find(a => a.id === agentId);
-        setTempValues({
-            ...tempValues,
-            [agentId]: {
-                ...agent,
-                [field]: currentValue
-            }
-        });
-    };
-
-    // NEW: Cancel editing
-    const handleCancelEdit = () => {
-        setEditingCell(null);
-    };
-
-    // NEW: Save edited value
-    const handleSaveEdit = async (agentId, field) => {
-        const newValue = tempValues[agentId]?.[field];
-        const originalAgent = agents.find(a => a.id === agentId);
-
-        // Validation
-        if (field === 'name' && !newValue?.trim()) {
-            alert('Agent 이름은 필수입니다.');
-            return;
-        }
-
-        // Optimistic Update
-        setAgents(agents.map(a =>
-            a.id === agentId ? { ...a, [field]: newValue } : a
-        ));
-        setEditingCell(null);
-
-        try {
-            const res = await fetch('/api/admin/agents/update', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    agentId,
-                    name: field === 'name' ? newValue : originalAgent.name,
-                    description: field === 'description' ? newValue : originalAgent.description
-                })
-            });
-
-            if (!res.ok) {
-                const data = await res.json();
-                throw new Error(data.error || 'Update failed');
-            }
-        } catch (error) {
-            console.error('Update failed:', error);
-            alert(`수정 실패: ${error.message}`);
-            // Revert on error
             fetchAgents();
         }
     };
 
-    // NEW: Update temporary value
-    const handleTempChange = (agentId, field, value) => {
-        setTempValues({
-            ...tempValues,
-            [agentId]: { ...tempValues[agentId], [field]: value }
-        });
+    // --- Agent Editing (SlideOver) ---
+    const handleEditAgent = (agent) => {
+        setSelectedAgent(agent);
+        setIsSlideOverOpen(true);
     };
 
-    // NEW: Open features modal
-    const openFeaturesModal = (agent) => {
-        setFeaturesModal({
-            isOpen: true,
-            agentId: agent.id,
-            agentName: agent.name,
-            features: [...(agent.features || [])]
-        });
-    };
-
-    // NEW: Save features modal
-    const saveFeaturesModal = async (features) => {
-        const agentId = featuresModal.agentId;
-
+    const handleSaveAgent = async (updatedAgent) => {
         // Optimistic Update
-        setAgents(agents.map(a =>
-            a.id === agentId ? { ...a, features } : a
-        ));
-        setFeaturesModal({ isOpen: false, agentId: null, agentName: '', features: [] });
+        setAgents(agents.map(a => a.id === updatedAgent.id ? updatedAgent : a));
+        setIsSlideOverOpen(false); // Close immediately
 
         try {
-            const res = await fetch('/api/admin/agents/update', {
+            // Update Basic Info
+            const res1 = await fetch('/api/admin/agents/update', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ agentId, features })
+                body: JSON.stringify({
+                    agentId: updatedAgent.id,
+                    name: updatedAgent.name,
+                    description: updatedAgent.description,
+                    features: updatedAgent.features
+                })
             });
 
-            if (!res.ok) {
-                const data = await res.json();
-                throw new Error(data.error || 'Update failed');
+            // If visibility changed
+            const res2 = await fetch('/api/admin/agents/toggle', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    agentId: updatedAgent.id,
+                    isActive: updatedAgent.is_active
+                })
+            });
+
+            if (!res1.ok || !res2.ok) {
+                throw new Error('Failed to update agent');
             }
         } catch (error) {
-            console.error('Features update failed:', error);
-            alert(`주요 기능 수정 실패: ${error.message}`);
-            fetchAgents(); // Revert on error
+            console.error('Update failed:', error);
+            alert('업데이트 실패: ' + error.message);
+            fetchAgents(); // Revert
         }
     };
 
+    // --- User Actions ---
     const handleUpdateRole = async (userId, newRole) => {
         try {
             const res = await fetch('/api/admin/update-role', {
@@ -233,7 +170,6 @@ export default function AdminPage() {
             });
 
             if (res.ok) {
-                // Optimistic UI update
                 setUsers(users.map(u => u.id === userId ? { ...u, role: newRole } : u));
             } else {
                 const data = await res.json();
@@ -304,263 +240,188 @@ export default function AdminPage() {
     if (loading) return <div>Loading...</div>;
 
     return (
-        <div style={{ padding: '40px', maxWidth: '1000px', margin: '0 auto' }}> {/* Increased maxWidth */}
+        <div style={{ padding: '40px', maxWidth: '1000px', margin: '0 auto', paddingBottom: '100px' }}>
             <h1 style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '24px' }}>관리자 대시보드</h1>
 
-            {/* NEW: Agent Management Section */}
+            {/* Agent Management Section */}
             <div style={{ background: 'white', borderRadius: '12px', boxShadow: 'rgba(0, 0, 0, 0.08) 0px 4px 12px', padding: '24px', marginBottom: '32px' }}>
                 <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '16px' }}>에이전트 관리</h2>
                 <p style={{ marginBottom: '16px', color: '#666', fontSize: '14px' }}>
-                    사이드바에 표시될 LLM Agent를 관리합니다. Name과 Description은 클릭하여 수정 가능하며, ID는 변경할 수 없습니다.
+                    사이드바에 표시될 LLM Agent를 관리합니다. 왼쪽의 '≡' 아이콘을 드래그하여 순서를 변경할 수 있습니다.
                 </p>
 
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                        <tr style={{ background: '#f2f4f6', textAlign: 'left' }}>
-                            <th style={{ padding: '12px', width: '60px', borderRadius: '8px 0 0 0' }}>순서</th>
-                            <th style={{ padding: '12px' }}>Name / Description (클릭하여 수정)</th>
-                            <th style={{ padding: '12px' }}>ID</th>
-                            <th style={{ padding: '12px' }}>주요 기능</th>
-                            <th style={{ padding: '12px' }}>상태</th>
-                            <th style={{ padding: '12px', borderRadius: '0 8px 8px 0', textAlign: 'center' }}>순서 변경</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {agents.map((agent, index) => (
-                            <tr key={agent.id} style={{ borderBottom: '1px solid #e5e8eb', opacity: agent.is_active ? 1 : 0.6 }}>
-                                <td style={{ padding: '12px', fontWeight: 'bold', color: '#888' }}>{index + 1}</td>
-                                <td style={{ padding: '12px' }}>
-                                    {editingCell?.agentId === agent.id && editingCell?.field === 'name' ? (
-                                        <input
-                                            type="text"
-                                            value={tempValues[agent.id]?.name ?? agent.name}
-                                            onChange={(e) => handleTempChange(agent.id, 'name', e.target.value)}
-                                            onBlur={() => handleSaveEdit(agent.id, 'name')}
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter') handleSaveEdit(agent.id, 'name');
-                                                if (e.key === 'Escape') handleCancelEdit();
-                                            }}
-                                            autoFocus
-                                            style={{
-                                                fontWeight: '600',
-                                                fontSize: '14px',
-                                                padding: '4px 8px',
-                                                border: '2px solid #007AFF',
-                                                borderRadius: '4px',
-                                                outline: 'none',
-                                                width: '100%'
-                                            }}
-                                        />
-                                    ) : (
-                                        <div
-                                            onClick={() => handleStartEdit(agent.id, 'name', agent.name)}
-                                            style={{
-                                                fontWeight: '600',
-                                                cursor: 'pointer',
-                                                padding: '4px',
-                                                borderRadius: '4px',
-                                                transition: 'background 0.2s'
-                                            }}
-                                            onMouseEnter={(e) => e.target.style.background = '#f5f5f7'}
-                                            onMouseLeave={(e) => e.target.style.background = 'transparent'}
-                                        >
-                                            {agent.name}
-                                        </div>
-                                    )}
+                <div style={{ overflowX: 'auto' }}> {/* Mobile Scroll */}
+                    <DndContext
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        onDragEnd={handleDragEnd}
+                    >
+                        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
+                            <thead>
+                                <tr style={{ background: '#f2f4f6', textAlign: 'left' }}>
+                                    <th style={{ padding: '12px', width: '80px', borderRadius: '8px 0 0 0', whiteSpace: 'nowrap', textAlign: 'center' }}>순서</th>
+                                    <th style={{ padding: '12px', whiteSpace: 'nowrap' }}>Name / Description</th>
+                                    <th style={{ padding: '12px', whiteSpace: 'nowrap' }}>ID</th>
+                                    <th style={{ padding: '12px', whiteSpace: 'nowrap' }}>주요 기능</th>
+                                    <th style={{ padding: '12px', whiteSpace: 'nowrap' }}>상태</th>
+                                    <th style={{ padding: '12px', textAlign: 'center', whiteSpace: 'nowrap', borderRadius: '0 8px 0 0' }}>수정</th>
+                                </tr>
+                            </thead>
+                            <tbody style={{ background: 'white' }}>
+                                <SortableContext
+                                    items={agents.map(a => a.id)}
+                                    strategy={verticalListSortingStrategy}
+                                >
+                                    {agents.map((agent) => (
+                                        <SortableAgentRow key={agent.id} agent={agent}>
+                                            {/* Name & Desc */}
+                                            <td style={{ padding: '12px' }}>
+                                                <div style={{ fontWeight: '600', color: '#333' }}>{agent.name}</div>
+                                                <div style={{ fontSize: '12px', color: '#888', marginTop: '4px', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                    {agent.description}
+                                                </div>
+                                            </td>
 
-                                    <div style={{ marginTop: '4px' }}>
-                                        {editingCell?.agentId === agent.id && editingCell?.field === 'description' ? (
-                                            <textarea
-                                                value={tempValues[agent.id]?.description ?? agent.description}
-                                                onChange={(e) => handleTempChange(agent.id, 'description', e.target.value)}
-                                                onBlur={() => handleSaveEdit(agent.id, 'description')}
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter' && e.ctrlKey) handleSaveEdit(agent.id, 'description');
-                                                    if (e.key === 'Escape') handleCancelEdit();
-                                                }}
-                                                autoFocus
-                                                rows="2"
-                                                style={{
+                                            {/* ID */}
+                                            <td style={{ padding: '12px', fontFamily: 'monospace', color: '#666', fontSize: '13px' }}>
+                                                {agent.id}
+                                            </td>
+
+                                            {/* Features Count */}
+                                            <td style={{ padding: '12px', fontSize: '13px', color: '#666', whiteSpace: 'nowrap' }}>
+                                                {agent.features?.length || 0}개 등록됨
+                                            </td>
+
+                                            {/* Status Badge */}
+                                            <td style={{ padding: '12px' }}>
+                                                <div style={{
+                                                    display: 'inline-block',
+                                                    padding: '4px 10px',
+                                                    borderRadius: '20px',
                                                     fontSize: '12px',
-                                                    padding: '4px 8px',
-                                                    border: '2px solid #007AFF',
-                                                    borderRadius: '4px',
-                                                    outline: 'none',
-                                                    width: '100%',
-                                                    resize: 'vertical',
-                                                    fontFamily: 'inherit'
-                                                }}
-                                            />
-                                        ) : (
-                                            <div
-                                                onClick={() => handleStartEdit(agent.id, 'description', agent.description)}
-                                                style={{
-                                                    fontSize: '12px',
-                                                    color: '#888',
-                                                    maxWidth: '300px',
-                                                    cursor: 'pointer',
-                                                    padding: '4px',
-                                                    borderRadius: '4px',
-                                                    whiteSpace: 'nowrap',
-                                                    overflow: 'hidden',
-                                                    textOverflow: 'ellipsis'
-                                                }}
-                                                onMouseEnter={(e) => e.target.style.background = '#f5f5f7'}
-                                                onMouseLeave={(e) => e.target.style.background = 'transparent'}
-                                            >
-                                                {agent.description}
-                                            </div>
-                                        )}
-                                    </div>
-                                </td>
-                                <td style={{ padding: '12px', fontFamily: 'monospace', color: '#666' }}>{agent.id}</td>
-                                <td style={{ padding: '12px' }}>
-                                    <button
-                                        onClick={() => openFeaturesModal(agent)}
-                                        style={{
-                                            padding: '6px 12px',
-                                            fontSize: '12px',
-                                            borderRadius: '6px',
-                                            border: '1px solid #e5e8eb',
-                                            background: 'white',
-                                            cursor: 'pointer',
-                                            color: '#333'
-                                        }}
-                                    >
-                                        편집 ({agent.features?.length || 0})
-                                    </button>
-                                </td>
-                                <td style={{ padding: '12px' }}>
-                                    <button
-                                        onClick={() => toggleAgentVisibility(agent.id, agent.is_active)}
-                                        style={{
-                                            padding: '6px 12px',
-                                            borderRadius: '20px',
-                                            border: 'none',
-                                            fontSize: '12px',
-                                            fontWeight: '600',
-                                            cursor: 'pointer',
-                                            backgroundColor: agent.is_active ? '#e3f2fd' : '#f5f5f5',
-                                            color: agent.is_active ? '#2196f3' : '#9e9e9e',
-                                        }}
-                                    >
-                                        {agent.is_active ? '사용 중' : '숨김'}
-                                    </button>
-                                </td>
-                                <td style={{ padding: '12px', textAlign: 'center' }}>
-                                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                                        <button
-                                            onClick={() => moveAgentUp(index)}
-                                            disabled={index === 0}
-                                            style={{
-                                                padding: '6px 10px',
-                                                cursor: index === 0 ? 'default' : 'pointer',
-                                                border: '1px solid #ddd',
-                                                borderRadius: '6px',
-                                                background: 'white',
-                                                color: index === 0 ? '#ddd' : '#333'
-                                            }}
-                                            title="위로 이동"
-                                        >
-                                            ▲
-                                        </button>
-                                        <button
-                                            onClick={() => moveAgentDown(index)}
-                                            disabled={index === agents.length - 1}
-                                            style={{
-                                                padding: '6px 10px',
-                                                cursor: index === agents.length - 1 ? 'default' : 'pointer',
-                                                border: '1px solid #ddd',
-                                                borderRadius: '6px',
-                                                background: 'white',
-                                                color: index === agents.length - 1 ? '#ddd' : '#333'
-                                            }}
-                                            title="아래로 이동"
-                                        >
-                                            ▼
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+                                                    fontWeight: '600',
+                                                    backgroundColor: agent.is_active ? '#e3f2fd' : '#f5f5f5',
+                                                    color: agent.is_active ? '#2196f3' : '#9e9e9e',
+                                                    whiteSpace: 'nowrap'
+                                                }}>
+                                                    {agent.is_active ? '사용 중' : '숨김'}
+                                                </div>
+                                            </td>
+
+                                            {/* Edit Button */}
+                                            <td style={{ padding: '12px', textAlign: 'center' }}>
+                                                <button
+                                                    onClick={() => handleEditAgent(agent)}
+                                                    style={{
+                                                        padding: '6px 14px',
+                                                        borderRadius: '6px',
+                                                        border: '1px solid #d1d6db',
+                                                        background: 'white',
+                                                        color: '#333',
+                                                        cursor: 'pointer',
+                                                        fontSize: '13px',
+                                                        fontWeight: '500',
+                                                        transition: 'all 0.2s',
+                                                        whiteSpace: 'nowrap'
+                                                    }}
+                                                    onMouseEnter={(e) => {
+                                                        e.target.style.background = '#f8f9fa';
+                                                        e.target.style.borderColor = '#c0c4c7';
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                        e.target.style.background = 'white';
+                                                        e.target.style.borderColor = '#d1d6db';
+                                                    }}
+                                                >
+                                                    편집
+                                                </button>
+                                            </td>
+                                        </SortableAgentRow>
+                                    ))}
+                                </SortableContext>
+                            </tbody>
+                        </table>
+                    </DndContext>
+                </div>
             </div>
 
+            {/* User Management Section */}
             <div style={{ background: 'white', borderRadius: '12px', boxShadow: 'rgba(0, 0, 0, 0.08) 0px 4px 12px', padding: '24px' }}>
                 <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '16px' }}>사용자 관리</h2>
 
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                        <tr style={{ background: '#f2f4f6', textAlign: 'left' }}>
-                            <th style={{ padding: '12px', borderRadius: '8px 0 0 8px' }}>User ID</th>
-                            <th style={{ padding: '12px' }}>Name</th>
-                            <th style={{ padding: '12px' }}>Username</th>
-                            <th style={{ padding: '12px' }}>Role</th>
-                            <th style={{ padding: '12px' }}>비밀번호</th>
-                            <th style={{ padding: '12px', borderRadius: '0 8px 8px 0' }}>계정 관리</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {users.map(user => (
-                            <tr key={user.id} style={{ borderBottom: '1px solid #e5e8eb' }}>
-                                <td style={{ padding: '12px' }}>{user.id}</td>
-                                <td style={{ padding: '12px' }}>{user.name}</td>
-                                <td style={{ padding: '12px' }}>{user.username}</td>
-                                <td style={{ padding: '12px' }}>
-                                    <select
-                                        value={user.role}
-                                        onChange={(e) => handleUpdateRole(user.id, e.target.value)}
-                                        style={{
-                                            padding: '4px 8px',
-                                            borderRadius: '4px',
-                                            border: '1px solid #e5e8eb',
-                                            fontSize: '14px',
-                                            backgroundColor: user.role === 'admin' ? '#e8f3ff' : 'white',
-                                            color: user.role === 'admin' ? '#3182f6' : '#333',
-                                            fontWeight: '500'
-                                        }}
-                                    >
-                                        <option value="user">User</option>
-                                        <option value="admin">Admin</option>
-                                    </select>
-                                </td>
-                                <td style={{ padding: '12px' }}>
-                                    <button
-                                        onClick={() => requestResetPassword(user.id)}
-                                        style={{
-                                            padding: '6px 12px',
-                                            fontSize: '12px',
-                                            borderRadius: '6px',
-                                            border: '1px solid #e5e8eb',
-                                            background: 'white',
-                                            cursor: 'pointer',
-                                            color: '#333'
-                                        }}
-                                    >
-                                        초기화
-                                    </button>
-                                </td>
-                                <td style={{ padding: '12px' }}>
-                                    <button
-                                        onClick={() => requestDeleteUser(user.id)}
-                                        style={{
-                                            padding: '6px 12px',
-                                            fontSize: '12px',
-                                            borderRadius: '6px',
-                                            border: '1px solid #e5e8eb',
-                                            background: '#fff5f5',
-                                            cursor: 'pointer',
-                                            color: '#e93e2f'
-                                        }}
-                                    >
-                                        계정 삭제
-                                    </button>
-                                </td>
+                <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '700px' }}>
+                        <thead>
+                            <tr style={{ background: '#f2f4f6', textAlign: 'left' }}>
+                                <th style={{ padding: '12px', borderRadius: '8px 0 0 8px' }}>User ID</th>
+                                <th style={{ padding: '12px' }}>Name</th>
+                                <th style={{ padding: '12px' }}>Username</th>
+                                <th style={{ padding: '12px' }}>Role</th>
+                                <th style={{ padding: '12px' }}>비밀번호</th>
+                                <th style={{ padding: '12px', borderRadius: '0 8px 8px 0' }}>계정 관리</th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            {users.map(user => (
+                                <tr key={user.id} style={{ borderBottom: '1px solid #e5e8eb' }}>
+                                    <td style={{ padding: '12px' }}>{user.id}</td>
+                                    <td style={{ padding: '12px' }}>{user.name}</td>
+                                    <td style={{ padding: '12px' }}>{user.username}</td>
+                                    <td style={{ padding: '12px' }}>
+                                        <select
+                                            value={user.role}
+                                            onChange={(e) => handleUpdateRole(user.id, e.target.value)}
+                                            style={{
+                                                padding: '4px 8px',
+                                                borderRadius: '4px',
+                                                border: '1px solid #e5e8eb',
+                                                fontSize: '14px',
+                                                backgroundColor: user.role === 'admin' ? '#e8f3ff' : 'white',
+                                                color: user.role === 'admin' ? '#3182f6' : '#333',
+                                                fontWeight: '500'
+                                            }}
+                                        >
+                                            <option value="user">User</option>
+                                            <option value="admin">Admin</option>
+                                        </select>
+                                    </td>
+                                    <td style={{ padding: '12px' }}>
+                                        <button
+                                            onClick={() => requestResetPassword(user.id)}
+                                            style={{
+                                                padding: '6px 12px',
+                                                fontSize: '12px',
+                                                borderRadius: '6px',
+                                                border: '1px solid #e5e8eb',
+                                                background: 'white',
+                                                cursor: 'pointer',
+                                                color: '#333'
+                                            }}
+                                        >
+                                            초기화
+                                        </button>
+                                    </td>
+                                    <td style={{ padding: '12px' }}>
+                                        <button
+                                            onClick={() => requestDeleteUser(user.id)}
+                                            style={{
+                                                padding: '6px 12px',
+                                                fontSize: '12px',
+                                                borderRadius: '6px',
+                                                border: '1px solid #e5e8eb',
+                                                background: '#fff5f5',
+                                                cursor: 'pointer',
+                                                color: '#e93e2f'
+                                            }}
+                                        >
+                                            계정 삭제
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
                 <p style={{ marginTop: '16px', fontSize: '13px', color: '#8b95a1' }}>
                     * 비밀번호 초기화 버튼을 누르면 해당 계정의 비밀번호가 <strong>"1234"</strong>로 변경됩니다.
                 </p>
@@ -569,6 +430,19 @@ export default function AdminPage() {
             <div style={{ marginTop: '24px', textAlign: 'right' }}>
                 <button onClick={() => router.push('/')} className="btn-primary" style={{ width: 'auto' }}>메인으로 돌아가기</button>
             </div>
+
+            {/* SlideOver for Editing */}
+            <SlideOver
+                isOpen={isSlideOverOpen}
+                onClose={() => setIsSlideOverOpen(false)}
+                title="에이전트 수정"
+            >
+                <AgentEditForm
+                    agent={selectedAgent}
+                    onSave={handleSaveAgent}
+                    onCancel={() => setIsSlideOverOpen(false)}
+                />
+            </SlideOver>
 
             {/* Confirmation Modal */}
             {confirmModal.isOpen && (
@@ -582,7 +456,7 @@ export default function AdminPage() {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    zIndex: 1000
+                    zIndex: 2000 // Higher than SlideOver
                 }}>
                     <div style={{
                         background: 'white',
@@ -625,21 +499,6 @@ export default function AdminPage() {
                         </div>
                     </div>
                 </div>
-            )}
-
-            {/* Features Edit Modal */}
-            {featuresModal.isOpen && (
-                <FeaturesEditModal
-                    agentName={featuresModal.agentName}
-                    features={featuresModal.features}
-                    onSave={saveFeaturesModal}
-                    onCancel={() => setFeaturesModal({
-                        isOpen: false,
-                        agentId: null,
-                        agentName: '',
-                        features: []
-                    })}
-                />
             )}
         </div>
     );
